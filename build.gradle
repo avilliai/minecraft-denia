@@ -1,0 +1,91 @@
+plugins {
+	id 'fabric-loom' version "${loom_version}"
+	id 'maven-publish'
+}
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+	archivesName = project.archives_base_name
+}
+
+repositories {
+	// Loom adds the Minecraft + Fabric repos automatically. Add extra ones for mod deps here.
+}
+
+loom {
+	// Splits client-only code (rendering, TTS playback) into src/client so it never
+	// leaks onto a dedicated server. Common/server logic lives in src/main.
+	splitEnvironmentSourceSets()
+
+	mods {
+		"mcgf" {
+			sourceSet sourceSets.main
+			sourceSet sourceSets.client
+		}
+	}
+}
+
+dependencies {
+	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+	// modImplementation lets Loom remap these mods from intermediary to the
+	// yarn-named mappings used in dev — required for the Fabric API symbols.
+	modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+	modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+}
+
+processResources {
+	inputs.property "version", project.version
+
+	filesMatching("fabric.mod.json") {
+		expand "version": project.version
+	}
+}
+
+def targetJava = 21
+
+tasks.withType(JavaCompile).configureEach {
+	it.options.encoding = "UTF-8"
+	it.options.release = targetJava
+}
+
+java {
+	withSourcesJar()
+
+	sourceCompatibility = JavaVersion.VERSION_21
+	targetCompatibility = JavaVersion.VERSION_21
+
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(targetJava)
+	}
+}
+
+jar {
+	inputs.property "archivesName", project.base.archivesName
+
+	from("LICENSE") {
+		rename { "${it}_${project.base.archivesName.get()}" }
+	}
+}
+
+// Stage the finished mod jar into ./lib (NOT the live game instance), so a fresh build can be
+// vetted on the side and only copied into .minecraft/mods by hand once it's confirmed working.
+// `remapJar` is Loom's final (remapped) artifact — the one that actually loads in-game.
+tasks.register('copyModToLib', Copy) {
+	dependsOn tasks.named('remapJar')
+	from tasks.named('remapJar')
+	into layout.projectDirectory.dir("lib")
+}
+tasks.named('build') { finalizedBy 'copyModToLib' }
+
+publishing {
+	publications {
+		create("mavenJava", MavenPublication) {
+			from components.java
+		}
+	}
+	repositories {
+	}
+}

@@ -1,0 +1,11 @@
+# Gradle / Loom
+.gradle/
+build/
+run/
+# Bundled toolchain (downloaded locally, not committed)
+.jdks/
+# Generator scratch
+tools/out/
+# IDE
+.idea/
+*.iml

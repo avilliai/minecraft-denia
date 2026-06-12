@@ -1,0 +1,37 @@
+{
+  "parent": "block/block",
+  "ambientocclusion": false,
+  "textures": {
+    "shell": "mcgf:block/void_block",
+    "core": "mcgf:block/void_block_core",
+    "particle": "mcgf:block/void_block"
+  },
+  "elements": [
+    {
+      "name": "shell",
+      "from": [0, 0, 0],
+      "to": [16, 16, 16],
+      "faces": {
+        "down":  { "uv": [0, 0, 16, 16], "texture": "#shell", "cullface": "down" },
+        "up":    { "uv": [0, 0, 16, 16], "texture": "#shell", "cullface": "up" },
+        "north": { "uv": [0, 0, 16, 16], "texture": "#shell", "cullface": "north" },
+        "south": { "uv": [0, 0, 16, 16], "texture": "#shell", "cullface": "south" },
+        "west":  { "uv": [0, 0, 16, 16], "texture": "#shell", "cullface": "west" },
+        "east":  { "uv": [0, 0, 16, 16], "texture": "#shell", "cullface": "east" }
+      }
+    },
+    {
+      "name": "core",
+      "from": [3.5, 3.5, 3.5],
+      "to": [12.5, 12.5, 12.5],
+      "faces": {
+        "down":  { "uv": [3.5, 3.5, 12.5, 12.5], "texture": "#core" },
+        "up":    { "uv": [3.5, 3.5, 12.5, 12.5], "texture": "#core" },
+        "north": { "uv": [3.5, 3.5, 12.5, 12.5], "texture": "#core" },
+        "south": { "uv": [3.5, 3.5, 12.5, 12.5], "texture": "#core" },
+        "west":  { "uv": [3.5, 3.5, 12.5, 12.5], "texture": "#core" },
+        "east":  { "uv": [3.5, 3.5, 12.5, 12.5], "texture": "#core" }
+      }
+    }
+  ]
+}

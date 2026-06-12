@@ -1,0 +1,17 @@
+{
+	"entity.mcgf.girlfriend": "达妮娅",
+	"entity.mcgf.void_shard": "虚质碎块",
+	"entity.mcgf.path_beacon": "寻路信标",
+	"item.mcgf.girlfriend_spawn_egg": "达妮娅刷怪蛋",
+	"item.mcgf.revive_charm": "重逢符",
+	"item.mcgf.bubble_wand": "泡泡杖",
+	"item.mcgf.path_beacon": "寻路信标",
+	"block.mcgf.void_block": "虚质方块",
+	"commands.mcgf.summoned": "%s 来到了你身边~",
+	"commands.mcgf.come": "正在赶过来~",
+	"commands.mcgf.follow": "好的，我跟着你！",
+	"commands.mcgf.stop": "好，我在这儿等你。",
+	"commands.mcgf.none": "附近没有找到达妮娅，先用 /gf summon 召唤吧。",
+	"commands.mcgf.reloaded": "配置已重新加载。",
+	"commands.mcgf.reload_failed": "配置加载失败，请检查 config/mcgf.json。"
+}

@@ -1,0 +1,17 @@
+{
+	"entity.mcgf.girlfriend": "Daniya",
+	"entity.mcgf.void_shard": "Void Shard",
+	"entity.mcgf.path_beacon": "Pathfinding Beacon",
+	"item.mcgf.girlfriend_spawn_egg": "Daniya Spawn Egg",
+	"item.mcgf.revive_charm": "Reunion Charm",
+	"item.mcgf.bubble_wand": "Bubble Wand",
+	"item.mcgf.path_beacon": "Pathfinding Beacon",
+	"block.mcgf.void_block": "Void Block",
+	"commands.mcgf.summoned": "%s came to your side~",
+	"commands.mcgf.come": "Coming over~",
+	"commands.mcgf.follow": "Okay, I'll follow you!",
+	"commands.mcgf.stop": "Alright, I'll wait here.",
+	"commands.mcgf.none": "No companion found nearby. Use /gf summon first.",
+	"commands.mcgf.reloaded": "Config reloaded.",
+	"commands.mcgf.reload_failed": "Failed to load config, check config/mcgf.json."
+}

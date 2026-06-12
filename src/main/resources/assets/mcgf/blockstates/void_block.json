@@ -1,0 +1,5 @@
+{
+  "variants": {
+    "": { "model": "mcgf:block/void_block" }
+  }
+}
