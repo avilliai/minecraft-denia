@@ -88,8 +88,12 @@ public final class PathAssist {
             return placeVoid(world, gf, stepGround);
         }
 
-        // 3) The target sits well above her and she's stuck → pillar straight up on void matter.
-        if (target.getY() - foot.getY() >= 2 && hasHeadroom(world, foot)) {
+        // 3) The target sits well above her AND she's basically right underneath it → pillar straight up.
+        //    只有水平已贴到目标正下方(±1格)才垫高——省方块：先靠近/破障走到目标正下方，再往上垫，
+        //    而不是隔着老远就先把自己垫高。
+        int hdx = target.getX() - foot.getX();
+        int hdz = target.getZ() - foot.getZ();
+        if (target.getY() - foot.getY() >= 2 && (hdx * hdx + hdz * hdz) <= 2 && hasHeadroom(world, foot)) {
             if (placeCooldown > 0) { placeCooldown--; return true; }
             if (placeVoid(world, gf, foot)) {
                 // Lift her onto the block she just conjured beneath herself (no suffocation).
@@ -141,7 +145,11 @@ public final class PathAssist {
 
     /** Chip the block at {@code pos} at vanilla-ish speed; break it once progress fills. */
     private boolean chip(ServerWorld world, GirlfriendEntity gf, BlockPos pos) {
-        if (isProtected(world.getBlockState(pos))) return false;
+        BlockState st = world.getBlockState(pos);
+        if (isProtected(st)) return false;
+        // 破障前换上对应工具：石头类→镐、木头→斧、沙/土→铲（有就用，没有就空手慢慢凿），
+        // 而不是一直拿着法杖干撸。
+        WorkUtil.equipTool(gf, WorkUtil.toolFor(st));
         float delta = WorkUtil.breakDelta(world, gf, pos);
         if (delta <= 0f) return false; // unbreakable (bedrock) → give up so she can teleport instead
         if (!pos.equals(breaking)) { breaking = pos; progress = 0f; }

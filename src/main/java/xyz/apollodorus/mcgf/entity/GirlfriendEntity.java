@@ -704,6 +704,9 @@ public class GirlfriendEntity extends PathAwareEntity {
             BlockPos head = part == net.minecraft.block.enums.BedPart.HEAD ? bedPos : bedPos.offset(face);
             cx = (foot.getX() + head.getX()) / 2.0 + 0.5;
             cz = (foot.getZ() + head.getZ()) / 2.0 + 0.5;
+            // 再往床头方向挪约一个头(0.4格)，躺得更靠枕头一侧。
+            cx += face.getOffsetX() * 0.4;
+            cz += face.getOffsetZ() * 0.4;
             // 由朝向向量算 yaw（south=0、顺时针）：x=-sin(yaw), z=cos(yaw) → yaw=atan2(-x,z)。
             float yaw = (float) Math.toDegrees(Math.atan2(-face.getOffsetX(), face.getOffsetZ()));   // 头朝床头一侧
             this.setYaw(yaw);

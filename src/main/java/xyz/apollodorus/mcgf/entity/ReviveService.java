@@ -85,6 +85,10 @@ public final class ReviveService {
 
     /** Live companion → fold her state into the charm and remove the entity. */
     public static boolean capture(ServerPlayerEntity owner, GirlfriendEntity gf) {
+        // 收回前先把她退回一形态并结束领域，免得二形态状态/领域残留影响下次唤出。
+        xyz.apollodorus.mcgf.combat.AbilityManager.endDomainFor(gf);
+        gf.setFormTwo(false);
+        gf.setNoGravity(false);
         DownedManager.setStored(owner.getUuid(), snapshotOf(gf));
 
         // 检查冷却时间：频繁收回时不触发语音
@@ -103,7 +107,9 @@ public final class ReviveService {
     private static GirlfriendEntity spawn(ServerWorld world, ServerPlayerEntity owner) {
         GirlfriendEntity gf = GirlfriendEntities.GIRLFRIEND.spawn(world, owner.getBlockPos(), SpawnReason.COMMAND);
         if (gf != null) {
-            // 重逢符唤出/复活的她永远是甜美一形态：清掉残留的二形态/能量/浮空，免得"二形态死亡后唤出还是二形态"。
+            // 重逢符唤出/复活的她永远是甜美一形态：清掉残留的二形态/能量/浮空 + 任何残留领域，
+            // 免得"二形态死亡/收回后唤出还是二形态"。实体 tick 里还有一道兜底：无领域时强制回一形态。
+            xyz.apollodorus.mcgf.combat.AbilityManager.endDomainFor(gf);
             gf.setFormTwo(false);
             gf.setNoGravity(false);
             gf.setEnergy(0);

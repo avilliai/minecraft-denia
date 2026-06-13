@@ -92,7 +92,7 @@ public class FollowOwnerGoal extends Goal {
             double dx = target.getX() - gf.getX();
             double dz = target.getZ() - gf.getZ();
             double horiz = Math.sqrt(dx * dx + dz * dz);
-            double stop = b.followStopDistance;
+            double stop = Math.max(b.followStartDistance, 4.0); // 浮空跟随时离玩家更远些，别贴脸/压头顶
             Vec3d v = gf.getVelocity();
             if (horiz > stop) {
                 // 比例控制：越接近越慢，上限 0.32 格/tick，平滑滑翔不过冲。
@@ -114,12 +114,10 @@ public class FollowOwnerGoal extends Goal {
             double dx = target.getX() - gf.getX();
             double dz = target.getZ() - gf.getZ();
             double horiz2 = dx * dx + dz * dz;
-            Path cur = gf.getNavigation().getCurrentPath();
-            boolean cannotReach = gf.getNavigation().isIdle() || (cur != null && !cur.reachesTarget());
-            // 主人在上方且走不过去时：就地破障/搭桥/垫高朝他靠（tickToward 会先横向破障，需要时在脚下
-            // 垫虚质方块把自己垫高）。放宽了触发——只要够不到他(在 bridgeMaxDistance 内)就垫，不再要求
-            // 必须几乎正下方，这样「比她高且无法绕路的位置」也能垫上去。
-            if (dy >= 1.5 && (horiz2 <= 9.0 || cannotReach)) {
+            // 只在「已基本走到主人正下方(±2格)且他在上方」时才就地垫高——像正常人一样：先尽量走/破障
+            // 靠到目标正下方，再往上垫，省方块。离得还远时不在这里垫，落到下面用普通寻路 + 终端的破障
+            // 协助(assist.tick)横向靠近，等贴到正下方这一支再触发垫高。
+            if (dy >= 1.5 && horiz2 <= 4.0) {
                 gf.getNavigation().stop();
                 assist.tickToward(sw, gf, b, target.getBlockPos());
                 return;
