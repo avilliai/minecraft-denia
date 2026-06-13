@@ -4,6 +4,7 @@ import net.minecraft.entity.ai.goal.Goal;
 import net.minecraft.entity.ai.pathing.Path;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.server.world.ServerWorld;
+import net.minecraft.util.math.Vec3d;
 import xyz.apollodorus.mcgf.config.ConfigManager;
 import xyz.apollodorus.mcgf.config.GirlfriendConfig;
 import xyz.apollodorus.mcgf.entity.GirlfriendEntity;
@@ -34,9 +35,9 @@ public class FollowOwnerGoal extends Goal {
         // While she's leading the owner over to a noticed chest, let that goal finish (she leads him there)
         // instead of follow yanking her back — PerceiveChestGoal bails on its own if he strays too far.
         if (gf.isLeadingChest()) return false;
-        // Napping near home while the owner is parked nearby: let her sleep (SleepAtHomeGoal wakes her the
-        // moment he starts moving again, so following resumes at once).
-        if (gf.isSleeping() && gf.isOwnerStationary()) return false;
+        // 她在床上打盹时，跟随完全让位——不再「玩家一动就把她叫醒」。何时醒由 SleepAtHomeGoal 决定
+        // （睡够自然醒 / 床被拆 / 玩家走出 50 格）；战斗、冲向受击玩家等更高优先级目标仍会照常唤醒她。
+        if (gf.isSleeping()) return false;
         PlayerEntity owner = gf.getOwner();
         if (owner == null || owner.isSpectator()) return false;
         if (gf.squaredDistanceTo(owner) < square(gf.effectiveFollowStartDistance())) return false;
@@ -48,7 +49,7 @@ public class FollowOwnerGoal extends Goal {
     public boolean shouldContinue() {
         if (!gf.isFollowing() || target == null || gf.getTask() != null || gf.getTarget() != null) return false;
         if (gf.isLeadingChest()) return false;
-        if (gf.isSleeping() && gf.isOwnerStationary()) return false;
+        if (gf.isSleeping()) return false;
         if (target.isRemoved() || target.isSpectator()) return false;
         // While the owner is parked she only needs to get back inside the roam leash; while he's
         // moving she closes all the way to followStopDistance (the start/stop gap kills oscillation).
@@ -80,6 +81,26 @@ public class FollowOwnerGoal extends Goal {
         if (dsq > square(b.teleportDistance)) {
             gf.getNavigation().stop();
             gf.requestTeleport(target.getX(), target.getY(), target.getZ());
+            return;
+        }
+
+        // 二形态浮空：像创造模式那样平滑飞向玩家。只控水平速度，竖直方向交给 tickFloat() 的悬浮控制；
+        // 用「随距离收敛」的速度上限避免过冲，到 followStopDistance 就缓停——不再把寻路倍率(1.2)当速度
+        // 直接 setVelocity，那会以 ~24 格/秒把她甩到玩家头顶来回抽搐。
+        if (gf.isFormTwo()) {
+            gf.getNavigation().stop();
+            double dx = target.getX() - gf.getX();
+            double dz = target.getZ() - gf.getZ();
+            double horiz = Math.sqrt(dx * dx + dz * dz);
+            double stop = b.followStopDistance;
+            Vec3d v = gf.getVelocity();
+            if (horiz > stop) {
+                // 比例控制：越接近越慢，上限 0.32 格/tick，平滑滑翔不过冲。
+                double step = Math.min(0.32, (horiz - stop) * 0.25 + 0.04);
+                gf.setVelocity(dx / horiz * step, v.y, dz / horiz * step);
+            } else {
+                gf.setVelocity(v.x * 0.6, v.y, v.z * 0.6); // 到位，水平缓停，竖直继续悬浮
+            }
             return;
         }
 

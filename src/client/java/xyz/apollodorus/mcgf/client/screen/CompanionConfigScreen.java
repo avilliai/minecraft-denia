@@ -28,9 +28,15 @@ public class CompanionConfigScreen extends Screen {
     private boolean ttsEnabled;
     private boolean woodEnabled;
     private boolean pickupEnabled;
+    private boolean cropsEnabled;
+    private boolean storageEnabled;
+    private boolean lightEnabled;
     private ButtonWidget ttsToggle;
     private ButtonWidget woodToggle;
     private ButtonWidget pickupToggle;
+    private ButtonWidget cropsToggle;
+    private ButtonWidget storageToggle;
+    private ButtonWidget lightToggle;
 
     public CompanionConfigScreen() {
         super(Text.literal("达妮娅 · 接口配置"));
@@ -42,6 +48,9 @@ public class CompanionConfigScreen extends Screen {
         ttsEnabled = cfg.tts.enabled;
         woodEnabled = cfg.behavior.autoGatherWood;
         pickupEnabled = cfg.behavior.autoPickup;
+        cropsEnabled = cfg.behavior.autoGatherCrops;
+        storageEnabled = cfg.behavior.autoStorage;
+        lightEnabled = cfg.behavior.autoLight;
 
         int w = Math.min(320, this.width - 40);
         int x = (this.width - w) / 2;
@@ -56,6 +65,7 @@ public class CompanionConfigScreen extends Screen {
         ttsRef    = field(x, y, w, cfg.tts.refAudioPath); y += gap;
         ttsPrompt = field(x, y, w, cfg.tts.promptText);   y += gap + 4;
 
+        // 第一行：TTS 和自动撸树
         ttsToggle = ButtonWidget.builder(ttsLabel(), b -> {
             ttsEnabled = !ttsEnabled;
             ttsToggle.setMessage(ttsLabel());
@@ -68,11 +78,30 @@ public class CompanionConfigScreen extends Screen {
         addDrawableChild(woodToggle);
         y += 26;
 
+        // 第二行：自动拾取和自动收菜
         pickupToggle = ButtonWidget.builder(pickupLabel(), b -> {
             pickupEnabled = !pickupEnabled;
             pickupToggle.setMessage(pickupLabel());
         }).dimensions(x, y, half, 20).build();
         addDrawableChild(pickupToggle);
+        cropsToggle = ButtonWidget.builder(cropsLabel(), b -> {
+            cropsEnabled = !cropsEnabled;
+            cropsToggle.setMessage(cropsLabel());
+        }).dimensions(x + w - half, y, half, 20).build();
+        addDrawableChild(cropsToggle);
+        y += 26;
+
+        // 第三行：自动存储和自动照明
+        storageToggle = ButtonWidget.builder(storageLabel(), b -> {
+            storageEnabled = !storageEnabled;
+            storageToggle.setMessage(storageLabel());
+        }).dimensions(x, y, half, 20).build();
+        addDrawableChild(storageToggle);
+        lightToggle = ButtonWidget.builder(lightLabel(), b -> {
+            lightEnabled = !lightEnabled;
+            lightToggle.setMessage(lightLabel());
+        }).dimensions(x + w - half, y, half, 20).build();
+        addDrawableChild(lightToggle);
         y += 26;
 
         addDrawableChild(ButtonWidget.builder(Text.literal("保存"), b -> save())
@@ -101,11 +130,23 @@ public class CompanionConfigScreen extends Screen {
         return Text.literal("自动拾取：" + (pickupEnabled ? "开" : "关"));
     }
 
+    private Text cropsLabel() {
+        return Text.literal("自动收菜：" + (cropsEnabled ? "开" : "关"));
+    }
+
+    private Text storageLabel() {
+        return Text.literal("自动存储：" + (storageEnabled ? "开" : "关"));
+    }
+
+    private Text lightLabel() {
+        return Text.literal("自动照明：" + (lightEnabled ? "开" : "关"));
+    }
+
     private void save() {
         ClientPlayNetworking.send(new ConfigUpdatePayload(
             llmUrl.getText().trim(), llmKey.getText().trim(), llmModel.getText().trim(),
             ttsEnabled, ttsUrl.getText().trim(), ttsRef.getText(), ttsPrompt.getText(),
-            woodEnabled, pickupEnabled));
+            woodEnabled, pickupEnabled, cropsEnabled, storageEnabled, lightEnabled));
         closeToGame();
     }
 

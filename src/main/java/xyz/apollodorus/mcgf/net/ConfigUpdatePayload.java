@@ -17,7 +17,8 @@ import xyz.apollodorus.mcgf.MCGirlfriendMod;
 public record ConfigUpdatePayload(
         String llmBaseURL, String llmApiKey, String llmModel,
         boolean ttsEnabled, String ttsUrl, String ttsRefAudioPath, String ttsPromptText,
-        boolean autoGatherWood, boolean autoPickup
+        boolean autoGatherWood, boolean autoPickup, boolean autoGatherCrops,
+        boolean autoStorage, boolean autoLight
 ) implements CustomPayload {
 
     public static final CustomPayload.Id<ConfigUpdatePayload> ID =
@@ -33,6 +34,9 @@ public record ConfigUpdatePayload(
         PacketCodecs.STRING, ConfigUpdatePayload::ttsPromptText,
         PacketCodecs.BOOLEAN, ConfigUpdatePayload::autoGatherWood,
         PacketCodecs.BOOLEAN, ConfigUpdatePayload::autoPickup,
+        PacketCodecs.BOOLEAN, ConfigUpdatePayload::autoGatherCrops,
+        PacketCodecs.BOOLEAN, ConfigUpdatePayload::autoStorage,
+        PacketCodecs.BOOLEAN, ConfigUpdatePayload::autoLight,
         ConfigUpdatePayload::new
     );
 

@@ -63,6 +63,9 @@ public class MCGirlfriendMod implements ModInitializer {
             cfg.tts.promptText = payload.ttsPromptText();
             cfg.behavior.autoGatherWood = payload.autoGatherWood();
             cfg.behavior.autoPickup = payload.autoPickup();
+            cfg.behavior.autoGatherCrops = payload.autoGatherCrops();
+            cfg.behavior.autoStorage = payload.autoStorage();
+            cfg.behavior.autoLight = payload.autoLight();
             ConfigManager.save(cfg);
             context.player().sendMessage(Text.literal("「" + cfg.persona.displayName + "」的接口配置已保存~"), false);
         });

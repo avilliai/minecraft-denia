@@ -58,6 +58,7 @@ public class PerceiveChestGoal extends Goal {
         GirlfriendConfig.Behavior b = ConfigManager.get().behavior;
         if (!b.autoPerceiveChests) return false;
         if (gf.getTarget() != null || gf.getTask() != null) return false; // fighting / commanded work first
+        if (gf.isSleeping()) return false;                                 // 打盹中别去看箱子
         if (gf.isFollowing() && !gf.isOwnerStationary()) return false;     // don't leave a moving owner
         if (nearHome(b)) return false;                                     // hushed near home
         if (--scanCd > 0) return false;                                    // bound the world scan to ~1/s

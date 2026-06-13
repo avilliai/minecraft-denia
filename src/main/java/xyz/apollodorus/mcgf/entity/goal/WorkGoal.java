@@ -276,11 +276,12 @@ public class WorkGoal extends Goal {
         return null;
     }
 
-    /** Idle gathering picks up ore (if she has a pickaxe), logs (if auto-wood on), and ripe crops. */
+    /** Idle gathering picks up ore (if she has a pickaxe), logs (if auto-wood on), and ripe crops (if auto-crops on). */
     private Predicate<BlockState> idlePredicate() {
         boolean pick = WorkUtil.hasTool(gf, WorkUtil.ToolKind.PICKAXE);
         boolean wood = ConfigManager.get().behavior.autoGatherWood;
-        return st -> (pick && WorkUtil.isOre(st)) || (wood && WorkUtil.isLog(st)) || WorkUtil.isMatureCrop(st);
+        boolean crops = ConfigManager.get().behavior.autoGatherCrops;
+        return st -> (pick && WorkUtil.isOre(st)) || (wood && WorkUtil.isLog(st)) || (crops && WorkUtil.isMatureCrop(st));
     }
 
     private static Predicate<BlockState> predicateForTask(Task t) {

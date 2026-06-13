@@ -81,6 +81,7 @@ public final class DaniyaDomain {
 
     private void deploy(GirlfriendConfig.Behavior b) {
         gf.setFormTwo(true);   // 切入二形态：换肤、空手、虚质连招、浮空
+        gf.setNoGravity(true); // 关重力，浮空才稳——否则 tickFloat() 一直在和重力打架，跟随时上下抽搐
         // 不再替换领域内的方块（实测很丑）——改成地面上的漩涡光纹 + 悬浮装饰，地形保持原样。
         addDamageBonus(gf, b.domainDamageBonus);
         // 收敛开场：去掉刺耳的 Warden 音爆，只留一记低沉的信标激活声（震动感太强→减弱）。

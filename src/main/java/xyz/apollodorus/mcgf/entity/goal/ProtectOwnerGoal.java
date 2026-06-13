@@ -117,7 +117,7 @@ public class ProtectOwnerGoal extends Goal {
         // When she's badly hurt she stops picking fights and only defends the owner.
         boolean defensiveOnly = gf.isLowHealth();
 
-        // Search around whichever anchor exists; prefer mobs close to the owner.
+        // Search around whichever anchor exists; prefer mobs close to girlfriend herself (for better kiting).
         Entity anchor = owner != null ? owner : gf;
         Box box = anchor.getBoundingBox().expand(r);
         List<Entity> nearby = gf.getEntityWorld().getOtherEntities(gf, box,
@@ -129,7 +129,8 @@ public class ProtectOwnerGoal extends Goal {
             LivingEntity le = (LivingEntity) e;
             if (defensiveOnly && (owner == null || ((HostileEntity) e).getTarget() != owner)) continue;
             if (!canEngage(le, b)) continue; // skip mobs she can't see / can't reach
-            double sq = anchor.squaredDistanceTo(e);
+            // Prefer mobs closest to girlfriend herself (not owner), for better target switching during kiting
+            double sq = gf.squaredDistanceTo(e);
             if (sq < bestSq) {
                 bestSq = sq;
                 best = le;

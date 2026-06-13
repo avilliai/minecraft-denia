@@ -53,9 +53,11 @@ public class ReviveCharmItem extends Item {
             return ActionResult.SUCCESS;
         }
 
-        // 3) She's dead → revive her (XP cost grows each time).
+        // 3) She's dead → revive her (XP cost grows each time, max 30 levels).
         if (DownedManager.isDowned(id)) {
-            int cost = ConfigManager.get().behavior.reviveBaseCost + DownedManager.getReviveCount(id);
+            int baseCost = ConfigManager.get().behavior.reviveBaseCost;
+            int reviveCount = DownedManager.getReviveCount(id);
+            int cost = Math.min(baseCost + reviveCount, 30); // 最多消耗30级
             if (sp.experienceLevel < cost) {
                 sp.sendMessage(Text.literal("经验不够呢，需要 " + cost + " 级。"), true);
                 return ActionResult.FAIL;

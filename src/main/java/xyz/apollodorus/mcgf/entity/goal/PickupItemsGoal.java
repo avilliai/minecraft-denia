@@ -33,6 +33,7 @@ public class PickupItemsGoal extends Goal {
     public boolean canStart() {
         if (!ConfigManager.get().behavior.autoPickup) return false;
         if (gf.getTarget() != null) return false;
+        if (gf.isSleeping()) return false;          // 别为了捡东西把打盹中的她叫起来
         this.target = findNearestDrop();
         return target != null;
     }

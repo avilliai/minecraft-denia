@@ -97,6 +97,18 @@ public final class PathAssist {
                 return true;
             }
         }
+
+        // 4) The target is well below her and she can't walk down → carefully fall and place void buffer.
+        if (foot.getY() - target.getY() >= 3 && canSafelyFall(world, foot)) {
+            // Let her fall naturally, and when she's falling fast enough, place a void block below to cushion
+            if (gf.getVelocity().y < -0.5) {
+                BlockPos cushion = foot.down(2);
+                if (world.getBlockState(cushion).isAir() || world.getBlockState(cushion).isReplaceable()) {
+                    if (placeCooldown > 0) { placeCooldown--; return true; }
+                    return placeVoid(world, gf, cushion);
+                }
+            }
+        }
         return false;
     }
 
@@ -104,7 +116,7 @@ public final class PathAssist {
 
     /** Lay one transient void block (infinite supply); it auto-restores to its original state ~60s later. */
     private boolean placeVoid(ServerWorld world, GirlfriendEntity gf, BlockPos pos) {
-        AbilityManager.blocks().place(world, pos, world.getTime() + VOID_LIFETIME, null);
+        AbilityManager.blocks().place(world, pos, world.getTime() + 2400L, null); // 120秒后自动消失
         gf.swingHand(Hand.MAIN_HAND);
         blocksUsed++;
         placeCooldown = 6;
@@ -116,6 +128,15 @@ public final class PathAssist {
         BlockState above = world.getBlockState(foot.up());
         BlockState above2 = world.getBlockState(foot.up(2));
         return (above.isAir() || above.isReplaceable()) && (above2.isAir() || above2.isReplaceable());
+    }
+
+    /** Check if it's safe to fall from current position (there's eventually ground below, not void). */
+    private static boolean canSafelyFall(ServerWorld world, BlockPos from) {
+        for (int dy = 1; dy <= 12; dy++) {
+            BlockPos check = from.down(dy);
+            if (world.getBlockState(check).isSolidBlock(world, check)) return true;
+        }
+        return false; // no ground within 12 blocks → probably void, don't jump
     }
 
     /** Chip the block at {@code pos} at vanilla-ish speed; break it once progress fills. */

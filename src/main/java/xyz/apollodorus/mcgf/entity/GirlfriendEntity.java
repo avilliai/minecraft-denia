@@ -6,6 +6,7 @@ import net.minecraft.component.DataComponentTypes;
 import net.minecraft.component.type.EquippableComponent;
 import net.minecraft.component.type.FoodComponent;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.EntityPose;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.entity.LivingEntity;
@@ -162,13 +163,18 @@ public class GirlfriendEntity extends PathAwareEntity {
     protected void initGoals() {
         this.goalSelector.add(0, new SwimGoal(this));        // Owner-attacked emergency: outrank melee/follow/work so she breaks off and runs to him.
         this.goalSelector.add(1, new RushToOwnerGoal(this));
-        this.goalSelector.add(2, new DaniyaAttackGoal(this));
+        this.goalSelector.add(2, new xyz.apollodorus.mcgf.entity.goal.DefensiveCocoonGoal(this)); // 防御茧（二形态血量不佳时）
+        this.goalSelector.add(3, new DaniyaAttackGoal(this));
         // 寻路信标带路：高于跟随/工作，低于战斗/冲向受击玩家——保护玩家仍最高优先级，战后自动继续前往落点。
         this.goalSelector.add(3, new xyz.apollodorus.mcgf.entity.goal.GuideToBeaconGoal(this));
         this.goalSelector.add(4, new FollowOwnerGoal(this));
         this.goalSelector.add(5, new PerceiveChestGoal(this));
         this.goalSelector.add(6, new WorkGoal(this));
+        // 背包快满且在家附近时，自动把杂物收进箱子（之前漏注册，所以从不触发）。
+        this.goalSelector.add(7, new xyz.apollodorus.mcgf.entity.goal.AutoStorageGoal(this));
         this.goalSelector.add(7, new PickupItemsGoal(this));
+        // 黑暗中在脚下铺一块发光虚质方块照明（无控制位，伴随其他行为；之前漏注册，所以从不触发）。
+        this.goalSelector.add(7, new xyz.apollodorus.mcgf.entity.goal.AutoLightGoal(this));
         // 慵懒少女：设了 home 后空闲时会去 home 附近的床上打盹（夜晚概率高、白天也会）。高于闲逛/张望。
         this.goalSelector.add(8, new xyz.apollodorus.mcgf.entity.goal.SleepAtHomeGoal(this));
         this.goalSelector.add(9, new WanderNearOwnerGoal(this));
@@ -526,7 +532,11 @@ public class GirlfriendEntity extends PathAwareEntity {
 
     public int getEnergy() { return energy; }
     public void setEnergy(int v) { this.energy = MathHelper.clamp(v, 0, 100); }
-    public void gainEnergy(int delta) { if (delta > 0) setEnergy(energy + delta); }
+    public void gainEnergy(int delta) {
+        // 二形态领域展开期间，不能回复能量
+        if (delta > 0 && AbilityManager.hasDomain(this)) return;
+        if (delta > 0) setEnergy(energy + delta);
+    }
 
     // --- 形态 (form 1 = sweet bubble girl; form 2 = 蚀域/幻灭, void kit + 厌世人格) ---
 
@@ -674,15 +684,15 @@ public class GirlfriendEntity extends PathAwareEntity {
     // --- 睡眠状态 ---
 
     /**
-     * 让她躺在床上睡觉。调整位置使她整个身体都在床上（而不是只有上半身）。
-     * Minecraft 的睡眠位置是床中心 +0.5Y，但需要微调让她完全躺下。
+     * 让她躺在床上睡觉。原版机制。
      */
     public void sleep(BlockPos bedPos) {
-        // 设置睡眠姿势（Minecraft 原版机制）
+        // 关键：设成睡眠姿势(EntityPose.SLEEPING)，BipedEntityRenderer 才会让她躺平、头枕枕头。
+        // 之前只设了 sleepingPosition(让 isSleeping() 返回真)却没设姿势，所以她「站」在床上。
         this.setSleepingPosition(bedPos);
-        // 调整位置：床中心水平居中，垂直位置调低一点让整个身体都在床上
-        Vec3d bedCenter = Vec3d.ofBottomCenter(bedPos).add(0, 0.5625, 0);
-        this.setPosition(bedCenter);
+        this.setPose(EntityPose.SLEEPING);
+        // 原版躺床的高度偏移(0.6875)；头朝哪边由 sleepingPosition 处的床朝向决定。
+        this.setPosition(bedPos.getX() + 0.5, bedPos.getY() + 0.6875, bedPos.getZ() + 0.5);
         // 停止所有移动
         this.setVelocity(Vec3d.ZERO);
         this.getNavigation().stop();
@@ -690,8 +700,8 @@ public class GirlfriendEntity extends PathAwareEntity {
 
     /** 从睡眠中醒来。 */
     public void wakeUp() {
-        this.clearSleepingPosition();  // 原版清除睡眠位置
-        // 确保她站起来时姿势正确
+        this.setPose(EntityPose.STANDING);   // 之前漏了这步：不复位姿势她会一直保持躺平
+        this.clearSleepingPosition();        // 原版清除睡眠位置
         this.setVelocity(Vec3d.ZERO);
     }
 

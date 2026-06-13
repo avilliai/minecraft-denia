@@ -8,6 +8,10 @@ import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.BlockPos;
 import xyz.apollodorus.mcgf.MCGirlfriendMod;
 
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
 /**
  * Builds / rebuilds a companion next to her owner for the 重逢符 (bond charm):
  * <ul>
@@ -21,6 +25,11 @@ import xyz.apollodorus.mcgf.MCGirlfriendMod;
 public final class ReviveService {
     private ReviveService() {}
 
+    // 召唤/收回冷却：避免频繁召唤/收回时每次都触发语音
+    private static final Map<UUID, Long> LAST_CAPTURE_TIME = new HashMap<>();
+    private static final Map<UUID, Long> LAST_RELEASE_TIME = new HashMap<>();
+    private static final long VOICE_COOLDOWN = 200L; // 10秒冷却
+
     /** Dead → respawn at the owner, full health. Caller has already charged XP + clears nothing. */
     public static GirlfriendEntity revive(ServerWorld world, ServerPlayerEntity owner) {
         DownedManager.Snapshot snap = DownedManager.getDowned(owner.getUuid());
@@ -29,7 +38,17 @@ public final class ReviveService {
         if (gf == null) return null;
         restore(gf, owner, snap, /*restoreHealth=*/ false);
         DownedManager.clearDowned(owner.getUuid());
-        speak(gf, "你刚刚倒下、又被玩家用力量带了回来。向他真诚道谢，表达失而复得的感动与依赖");
+        // 复活语音多样化（基于游戏内语音风格）
+        String[] revivePrompts = {
+            "你刚刚倒下、又被玩家用力量带了回来。向他真诚道谢，表达失而复得的感动与依赖。",
+            "你从虚无中醒来，发现玩家在身边。有点茫然，然后轻声说：「还好……你还在。」",
+            "你睁开眼，看到玩家。有点虚弱但又安心，说：「对不起……让你担心了。」",
+            "你复活了，头还有点晕。揉揉眼睛，说：「呼……差点就真的睡过去了。」",
+            "你回来了，看着玩家，轻声说：「谢谢……我还能继续陪着你。」",
+            "你醒来，有点迷糊：「我……倒下了吗？抱歉，下次会更小心的。」"
+        };
+        int index = world.getRandom().nextInt(revivePrompts.length);
+        speak(gf, revivePrompts[index]);
         return gf;
     }
 
@@ -41,7 +60,15 @@ public final class ReviveService {
         if (gf == null) return null;
         restore(gf, owner, snap, /*restoreHealth=*/ true);
         DownedManager.clearStored(owner.getUuid());
-        speak(gf, "你从符里被放了出来，回到玩家身边，轻松自然地打个招呼、表达陪伴的心情");
+
+        // 检查冷却时间：频繁释放时不触发语音
+        UUID ownerId = owner.getUuid();
+        long now = world.getTime();
+        Long lastRelease = LAST_RELEASE_TIME.get(ownerId);
+        if (lastRelease == null || now - lastRelease > VOICE_COOLDOWN) {
+            speak(gf, "你从符里被放了出来，回到玩家身边，轻松自然地打个招呼、表达陪伴的心情");
+            LAST_RELEASE_TIME.put(ownerId, now);
+        }
         return gf;
     }
 
@@ -51,6 +78,7 @@ public final class ReviveService {
         if (gf == null) return null;
         gf.setOwnerUuid(owner.getUuid());
         gf.setFollowing(true);
+        // 第一次召唤总是触发语音（重要时刻）
         speak(gf, "你第一次被玩家召唤到这个世界、来到他身边，温柔地做个自我介绍、表达愿意一直陪着他");
         return gf;
     }
@@ -58,6 +86,16 @@ public final class ReviveService {
     /** Live companion → fold her state into the charm and remove the entity. */
     public static boolean capture(ServerPlayerEntity owner, GirlfriendEntity gf) {
         DownedManager.setStored(owner.getUuid(), snapshotOf(gf));
+
+        // 检查冷却时间：频繁收回时不触发语音
+        UUID ownerId = owner.getUuid();
+        long now = gf.getEntityWorld().getTime();
+        Long lastCapture = LAST_CAPTURE_TIME.get(ownerId);
+        if (lastCapture == null || now - lastCapture > VOICE_COOLDOWN) {
+            speak(gf, "你被玩家收进符里了，温柔地说一句简短的话（比如'那我先歇一会儿咯~'），然后消失");
+            LAST_CAPTURE_TIME.put(ownerId, now);
+        }
+
         gf.discard();
         return true;
     }

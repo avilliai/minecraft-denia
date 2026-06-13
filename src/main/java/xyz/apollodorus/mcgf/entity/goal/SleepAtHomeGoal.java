@@ -65,7 +65,11 @@ public class SleepAtHomeGoal extends Goal {
     public boolean shouldContinue() {
         if (bed == null || !(gf.getEntityWorld() instanceof ServerWorld sw)) return false;
         if (gf.getTarget() != null || gf.getTask() != null || gf.isGuiding() || gf.isLeadingChest()) return false;
-        if (gf.isFollowing() && !gf.isOwnerStationary()) return false;     // 玩家动了 → 醒来去跟随
+        // 只有在玩家距离很远（>50格）或者有明确攻击时才醒来，否则让她安心睡觉
+        if (gf.isFollowing()) {
+            var owner = gf.getOwner();
+            if (owner != null && gf.squaredDistanceTo(owner) > 50.0 * 50.0) return false;
+        }
         if (!IS_BED.test(sw.getBlockState(bed))) return false;             // 床被拆了
         if (asleep && sw.getTime() >= wakeTime) return false;              // 睡够了，自然醒
         return true;

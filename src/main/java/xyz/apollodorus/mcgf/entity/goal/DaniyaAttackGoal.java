@@ -100,16 +100,49 @@ public class DaniyaAttackGoal extends Goal {
 
         double maxRange = formTwo ? b.form2AttackDistance : b.rangedMaxDistance;
         // 形态二贴得更近再打（之前太远像炮塔/发呆）；形态一保持中距。
-        double preferred = Math.max(3.0, formTwo ? maxRange * 0.42 : maxRange * 0.6);
+        // 形态一面对多个敌人时，保持更远的距离进行风筝
+        int nearbyHostiles = countNearbyHostiles();
+        double preferred = Math.max(3.0, formTwo ? maxRange * 0.42 :
+            (nearbyHostiles >= 3 ? maxRange * 0.8 : maxRange * 0.6)); // 3个或以上敌人时拉开距离
         double dist = gf.distanceTo(target);
         boolean canSee = gf.canSee(target);
 
+        // 形态一多敌人策略：保持距离，边退边打，利用远程泡泡攻击
+        boolean shouldKite = !formTwo && nearbyHostiles >= 3 && dist < maxRange; // 确保在射程内才风筝
+
         // 形态二：先靠近敌人再打——离得远 OR 看不见（被挡）就径直贴近，到位后才环绕走位。
         // 形态一：稳住别多动症，进入合适距离就停下原地输出，只偶尔挪一小步。
-        double moveSpeed = b.moveSpeed * (formTwo ? 1.35 : 1.0);
-        double band = formTwo ? 1.0 : 2.2;          // 形态一容忍更宽的距离带 → 不会一直微调
+        // 风筝模式：持续移动，保持距离，避免被包围
+        double moveSpeed = b.moveSpeed * (formTwo ? 1.35 : (shouldKite ? 1.2 : 1.0));
+        double band = formTwo ? 1.0 : (shouldKite ? 3.0 : 2.2); // 风筝时容忍更宽的距离带
         boolean mustApproach = dist > preferred + band || (formTwo && !canSee && dist > preferred);
-        if (mustApproach) {
+
+        if (shouldKite) {
+            // 风筝模式：始终保持移动，优先后退拉开距离
+            if (dist < preferred) {
+                // 距离太近，后退
+                if (--repathCd <= 0) {
+                    repathCd = 8;
+                    backAwayFrom(target, moveSpeed, preferred);
+                }
+            } else if (dist > preferred + band * 1.5) {
+                // 距离太远，稍微靠近一点
+                if (--repathCd <= 0) {
+                    repathCd = 12;
+                    gf.getNavigation().startMovingTo(target, moveSpeed * 0.8);
+                }
+            } else {
+                // 合适距离，侧向移动（风筝走位）
+                if (--strafeCd <= 0) {
+                    strafeCd = 6 + gf.getRandom().nextInt(6);
+                    if (--strafeFlipCd <= 0) {
+                        strafeFlipCd = 2 + gf.getRandom().nextInt(3);
+                        strafeDir = -strafeDir;
+                    }
+                    strafeAround(target, moveSpeed * 0.9, false);
+                }
+            }
+        } else if (mustApproach) {
             if (--repathCd <= 0) {
                 repathCd = formTwo ? 8 : 16;
                 gf.getNavigation().startMovingTo(target, moveSpeed);
@@ -179,6 +212,15 @@ public class DaniyaAttackGoal extends Goal {
         double nx = target.getX() + dir.x * (preferred + 1.0);
         double nz = target.getZ() + dir.z * (preferred + 1.0);
         gf.getNavigation().startMovingTo(nx, gf.getY(), nz, speed);
+    }
+
+    /** 计算周围敌对生物的数量，用于判断是否需要风筝 */
+    private int countNearbyHostiles() {
+        var world = gf.getEntityWorld();
+        var box = gf.getBoundingBox().expand(8.0); // 8格范围内
+        var hostiles = world.getOtherEntities(gf, box,
+            e -> e instanceof net.minecraft.entity.mob.HostileEntity && e.isAlive());
+        return hostiles.size();
     }
 
     private void castCombo(ServerWorld sw, boolean formTwo) {
