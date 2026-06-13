@@ -125,7 +125,7 @@ public class GuideToBeaconGoal extends Goal {
 
         // Owner caught up to the spot → guide complete.
         if (owner != null && owner.squaredDistanceTo(center) <= OWNER_NEAR_SQ) {
-            speak(ConfigManager.get().prompts.guideArrive);
+            speak(GirlfriendConfig.pickOne(ConfigManager.get().prompts.guideArrive));
             gf.clearGuide();
             gf.getNavigation().stop();
             return;
@@ -137,7 +137,7 @@ public class GuideToBeaconGoal extends Goal {
                 gf.getNavigation().stop();
                 gf.requestTeleport(owner.getX(), owner.getY(), owner.getZ());
             }
-            speak(ConfigManager.get().prompts.guideTimeout);
+            speak(GirlfriendConfig.pickOne(ConfigManager.get().prompts.guideTimeout));
             gf.clearGuide();
             return;
         }

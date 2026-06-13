@@ -107,8 +107,10 @@ public class DaniyaAttackGoal extends Goal {
         double dist = gf.distanceTo(target);
         boolean canSee = gf.canSee(target);
 
-        // 形态一多敌人策略：保持距离，边退边打，利用远程泡泡攻击
-        boolean shouldKite = !formTwo && nearbyHostiles >= 3 && dist < maxRange; // 确保在射程内才风筝
+        // 形态一多敌人策略：保持距离，边退边打，利用远程泡泡攻击。
+        // 也包含「近处有怪贴脸」的情况——哪怕只有 1~2 只，只要有怪进了近战距离就拉开，别站着被打死。
+        boolean meleeThreat = !formTwo && nearestHostileSq() < 4.5 * 4.5;
+        boolean shouldKite = !formTwo && dist < maxRange && (nearbyHostiles >= 3 || meleeThreat);
 
         // 形态二：先靠近敌人再打——离得远 OR 看不见（被挡）就径直贴近，到位后才环绕走位。
         // 形态一：稳住别多动症，进入合适距离就停下原地输出，只偶尔挪一小步。
@@ -205,13 +207,36 @@ public class DaniyaAttackGoal extends Goal {
         gf.getNavigation().startMovingTo(nx, gf.getY(), nz, speed);
     }
 
-    /** Crowded in too close → step back out toward the preferred fighting distance. */
+    /** Crowded in too close → step back out, away from the COMBINED direction of all nearby mobs. */
     private void backAwayFrom(LivingEntity target, double speed, double preferred) {
-        Vec3d toGf = gf.getEntityPos().subtract(target.getEntityPos());
-        Vec3d dir = toGf.lengthSquared() < 1.0e-3 ? new Vec3d(1, 0, 0) : toGf.normalize();
-        double nx = target.getX() + dir.x * (preferred + 1.0);
-        double nz = target.getZ() + dir.z * (preferred + 1.0);
+        // 远离附近所有怪的合力方向后退，避免「退开当前目标却退进另一只怪」被夹击。越近的怪权重越大。
+        Vec3d away = Vec3d.ZERO;
+        var box = gf.getBoundingBox().expand(7.0);
+        for (net.minecraft.entity.Entity e : gf.getEntityWorld().getOtherEntities(gf, box,
+                x -> x instanceof net.minecraft.entity.mob.HostileEntity && x.isAlive())) {
+            Vec3d d = gf.getEntityPos().subtract(e.getEntityPos());
+            double len = d.length();
+            if (len > 1.0e-3) away = away.add(d.multiply(1.0 / (len * len)));
+        }
+        if (away.lengthSquared() < 1.0e-6) {
+            Vec3d toGf = gf.getEntityPos().subtract(target.getEntityPos());
+            away = toGf.lengthSquared() < 1.0e-3 ? new Vec3d(1, 0, 0) : toGf;
+        }
+        away = away.normalize();
+        double nx = gf.getX() + away.x * (preferred + 1.0);
+        double nz = gf.getZ() + away.z * (preferred + 1.0);
         gf.getNavigation().startMovingTo(nx, gf.getY(), nz, speed);
+    }
+
+    /** Squared distance to the nearest live hostile within 8 blocks (MAX_VALUE if none). */
+    private double nearestHostileSq() {
+        double best = Double.MAX_VALUE;
+        var box = gf.getBoundingBox().expand(8.0);
+        for (net.minecraft.entity.Entity e : gf.getEntityWorld().getOtherEntities(gf, box,
+                x -> x instanceof net.minecraft.entity.mob.HostileEntity && x.isAlive())) {
+            best = Math.min(best, gf.squaredDistanceTo(e));
+        }
+        return best;
     }
 
     /** 计算周围敌对生物的数量，用于判断是否需要风筝 */

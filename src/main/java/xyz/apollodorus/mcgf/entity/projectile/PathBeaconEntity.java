@@ -95,7 +95,7 @@ public class PathBeaconEntity extends ThrownItemEntity {
             if (gf == null) return;
             gf.setGuideTarget(target);
             if (MCGirlfriendMod.BRAIN != null) {
-                MCGirlfriendMod.BRAIN.proactive(gf, ConfigManager.get().prompts.guideStart);
+                MCGirlfriendMod.BRAIN.proactive(gf, xyz.apollodorus.mcgf.config.GirlfriendConfig.pickOne(ConfigManager.get().prompts.guideStart));
             }
         });
     }

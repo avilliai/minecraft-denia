@@ -163,7 +163,7 @@ public class GirlfriendEntity extends PathAwareEntity {
     protected void initGoals() {
         this.goalSelector.add(0, new SwimGoal(this));        // Owner-attacked emergency: outrank melee/follow/work so she breaks off and runs to him.
         this.goalSelector.add(1, new RushToOwnerGoal(this));
-        this.goalSelector.add(2, new xyz.apollodorus.mcgf.entity.goal.DefensiveCocoonGoal(this)); // 防御茧（二形态血量不佳时）
+        // 防御茧已移除：二形态专注输出，期间不再放置任何虚质方块（茧会把方块糊到她头上、还会卡头）。
         this.goalSelector.add(3, new DaniyaAttackGoal(this));
         // 寻路信标带路：高于跟随/工作，低于战斗/冲向受击玩家——保护玩家仍最高优先级，战后自动继续前往落点。
         this.goalSelector.add(3, new xyz.apollodorus.mcgf.entity.goal.GuideToBeaconGoal(this));
@@ -233,7 +233,7 @@ public class GirlfriendEntity extends PathAwareEntity {
         tickVoidAura(sw);
     }
 
-    private static final double FLOAT_HOVER = 2.4; // blocks above ground she hovers in 形态二（更高的浮空）
+    private static final double FLOAT_HOVER = 3.4; // blocks above ground she hovers in 形态二（在原 2.4 基础上再抬高约一格）
 
     /**
      * 形态二·身侧虚质粒子（取代之前头顶那顶"冠"）：一层环绕她身体的深蓝/紫虚质粒子壳，随时间转动、上下起伏，
@@ -313,7 +313,7 @@ public class GirlfriendEntity extends PathAwareEntity {
     /** Fire an AI-generated 切入幻灭之形 line (form-2 persona is already active by deploy time). */
     private void announceDomainEnter() {
         if (MCGirlfriendMod.BRAIN != null) {
-            MCGirlfriendMod.BRAIN.proactive(this, ConfigManager.get().prompts.domainEnter);
+            MCGirlfriendMod.BRAIN.proactive(this, GirlfriendConfig.pickOne(ConfigManager.get().prompts.domainEnter));
         }
     }
 
@@ -366,7 +366,7 @@ public class GirlfriendEntity extends PathAwareEntity {
         lastChestRemarkTick = now;
         // ~50% her own 达妮娅 perceive clip; otherwise (and for any other persona) an AI line.
         if (!xyz.apollodorus.mcgf.ai.Voice.maybePerceive(this) && MCGirlfriendMod.BRAIN != null) {
-            MCGirlfriendMod.BRAIN.proactive(this, ConfigManager.get().prompts.foundChest);
+            MCGirlfriendMod.BRAIN.proactive(this, GirlfriendConfig.pickOne(ConfigManager.get().prompts.foundChest));
         }
     }
 
@@ -691,9 +691,27 @@ public class GirlfriendEntity extends PathAwareEntity {
         // 之前只设了 sleepingPosition(让 isSleeping() 返回真)却没设姿势，所以她「站」在床上。
         this.setSleepingPosition(bedPos);
         this.setPose(EntityPose.SLEEPING);
-        // 原版躺床的高度偏移(0.6875)；头朝哪边由 sleepingPosition 处的床朝向决定。
-        this.setPosition(bedPos.getX() + 0.5, bedPos.getY() + 0.6875, bedPos.getZ() + 0.5);
-        // 停止所有移动
+        // 沿床身躺、头枕枕头：按床朝向(FACING 指向床头)对齐身体朝向，并居中到床的两格中点，
+        // 避免之前那种横躺、半个身子探出床外的情况。
+        World w = this.getEntityWorld();
+        BlockState bs = w.getBlockState(bedPos);
+        double cx = bedPos.getX() + 0.5, cz = bedPos.getZ() + 0.5;
+        if (bs.contains(net.minecraft.state.property.Properties.HORIZONTAL_FACING)) {
+            net.minecraft.util.math.Direction face = bs.get(net.minecraft.state.property.Properties.HORIZONTAL_FACING);
+            net.minecraft.block.enums.BedPart part = bs.contains(net.minecraft.block.BedBlock.PART)
+                ? bs.get(net.minecraft.block.BedBlock.PART) : net.minecraft.block.enums.BedPart.FOOT;
+            BlockPos foot = part == net.minecraft.block.enums.BedPart.HEAD ? bedPos.offset(face.getOpposite()) : bedPos;
+            BlockPos head = part == net.minecraft.block.enums.BedPart.HEAD ? bedPos : bedPos.offset(face);
+            cx = (foot.getX() + head.getX()) / 2.0 + 0.5;
+            cz = (foot.getZ() + head.getZ()) / 2.0 + 0.5;
+            // 由朝向向量算 yaw（south=0、顺时针）：x=-sin(yaw), z=cos(yaw) → yaw=atan2(-x,z)。
+            float yaw = (float) Math.toDegrees(Math.atan2(-face.getOffsetX(), face.getOffsetZ()));   // 头朝床头一侧
+            this.setYaw(yaw);
+            this.setBodyYaw(yaw);
+            this.setHeadYaw(yaw);
+        }
+        // 原版躺床的高度偏移(0.6875)。
+        this.setPosition(cx, bedPos.getY() + 0.6875, cz);
         this.setVelocity(Vec3d.ZERO);
         this.getNavigation().stop();
     }

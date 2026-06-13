@@ -154,6 +154,10 @@ public final class ReviveService {
                                 DownedManager.Snapshot snap, boolean restoreHealth) {
         gf.setOwnerUuid(owner.getUuid());
         gf.setFollowing(true);
+        // 复活/释放固定回到甜美一形态：清掉任何残留的二形态/浮空/能量，消除"唤出后偶尔还是二形态皮肤"的随机性。
+        gf.setFormTwo(false);
+        gf.setNoGravity(false);
+        gf.setEnergy(0);
         gf.importInventory(snap.inventory);
         gf.setAffection(snap.affection);
         if (snap.hasHome) gf.setHomePos(new BlockPos(snap.homeX, snap.homeY, snap.homeZ));

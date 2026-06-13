@@ -93,10 +93,9 @@ public class SleepAtHomeGoal extends Goal {
     @Override
     public void tick() {
         if (bed == null) return;
+        if (asleep) return; // 睡着后什么都不做：别让 LookControl 每 tick 拨她的头（会和躺姿打架、看起来在抽搐）
         Vec3d center = Vec3d.ofCenter(bed);
         gf.getLookControl().lookAt(center);
-
-        if (asleep) return; // already sleeping; shouldContinue handles waking
 
         if (gf.squaredDistanceTo(center) <= ARRIVE_SQ) {
             gf.getNavigation().stop();

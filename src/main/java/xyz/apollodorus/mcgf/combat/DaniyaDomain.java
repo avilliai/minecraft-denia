@@ -119,7 +119,7 @@ public final class DaniyaDomain {
         world.spawnParticles(ParticleTypes.PORTAL, centerVec.x, centerVec.y + 0.5, centerVec.z,
             80, radius * 0.5, 0.5, radius * 0.5, 0.3);
         if (xyz.apollodorus.mcgf.MCGirlfriendMod.BRAIN != null && !gf.isRemoved()) {
-            xyz.apollodorus.mcgf.MCGirlfriendMod.BRAIN.proactive(gf, ConfigManager.get().prompts.domainEnd);
+            xyz.apollodorus.mcgf.MCGirlfriendMod.BRAIN.proactive(gf, GirlfriendConfig.pickOne(ConfigManager.get().prompts.domainEnd));
         }
     }
 

@@ -16,7 +16,7 @@ import java.util.EnumSet;
 public class AutoLightGoal extends Goal {
     private static final int LIGHT_THRESHOLD = 7; // 光照等级低于此值时放置
     private static final long PLACEMENT_COOLDOWN = 100L; // 5秒冷却，避免过于频繁
-    private static final long VOID_LIGHT_LIFETIME = 2400L; // 虚质光源持续120秒后消失（统一为120秒）
+    private static final long VOID_LIGHT_LIFETIME = 2000L; // 虚质光源持续100秒后消失
 
     private final GirlfriendEntity gf;
     private long lastPlacementTime;
@@ -30,6 +30,7 @@ public class AutoLightGoal extends Goal {
     public boolean canStart() {
         if (!(gf.getEntityWorld() instanceof ServerWorld)) return false;
         if (!ConfigManager.get().behavior.autoLight) return false;
+        if (gf.isFormTwo()) return false; // 二形态专注输出，期间不放任何虚质方块
 
         // 只在地下或黑暗环境中自动照明
         int lightLevel = gf.getEntityWorld().getLightLevel(gf.getBlockPos());

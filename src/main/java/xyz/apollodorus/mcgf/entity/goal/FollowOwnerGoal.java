@@ -116,7 +116,10 @@ public class FollowOwnerGoal extends Goal {
             double horiz2 = dx * dx + dz * dz;
             Path cur = gf.getNavigation().getCurrentPath();
             boolean cannotReach = gf.getNavigation().isIdle() || (cur != null && !cur.reachesTarget());
-            if (dy >= 2.0 && (horiz2 <= 9.0 || (cannotReach && horiz2 <= 36.0))) {
+            // 主人在上方且走不过去时：就地破障/搭桥/垫高朝他靠（tickToward 会先横向破障，需要时在脚下
+            // 垫虚质方块把自己垫高）。放宽了触发——只要够不到他(在 bridgeMaxDistance 内)就垫，不再要求
+            // 必须几乎正下方，这样「比她高且无法绕路的位置」也能垫上去。
+            if (dy >= 1.5 && (horiz2 <= 9.0 || cannotReach)) {
                 gf.getNavigation().stop();
                 assist.tickToward(sw, gf, b, target.getBlockPos());
                 return;

@@ -17,7 +17,33 @@ import java.nio.file.Path;
  */
 public final class ConfigManager {
     private static final Logger LOGGER = LoggerFactory.getLogger("mcgf/config");
-    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
+
+    private static final java.lang.reflect.Type STRING_LIST_TYPE =
+        new com.google.gson.reflect.TypeToken<java.util.List<String>>() {}.getType();
+
+    // 兼容老配置：单个字符串也接受成单元素列表。这样把某些 String 引导词字段升级为 List<String> 后，
+    // 老的 mcgf.json 仍能正常解析，不会因类型不符而整份解析失败、回退默认值（那会连 API key 都丢）。
+    private static final Gson GSON = new GsonBuilder()
+        .setPrettyPrinting()
+        .registerTypeAdapter(STRING_LIST_TYPE, new LenientStringList())
+        .create();
+
+    private static final class LenientStringList implements com.google.gson.JsonDeserializer<java.util.List<String>> {
+        @Override
+        public java.util.List<String> deserialize(com.google.gson.JsonElement json, java.lang.reflect.Type type,
+                                                  com.google.gson.JsonDeserializationContext ctx) {
+            java.util.List<String> out = new java.util.ArrayList<>();
+            if (json == null || json.isJsonNull()) return out;
+            if (json.isJsonArray()) {
+                for (com.google.gson.JsonElement e : json.getAsJsonArray()) {
+                    if (e != null && !e.isJsonNull()) out.add(e.getAsString());
+                }
+            } else if (json.isJsonPrimitive()) {
+                out.add(json.getAsString());   // 老配置里的单条字符串 → 单元素列表
+            }
+            return out;
+        }
+    }
 
     private static volatile GirlfriendConfig config = new GirlfriendConfig();
 

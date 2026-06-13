@@ -112,11 +112,11 @@ public final class PathAssist {
         return false;
     }
 
-    private static final long VOID_LIFETIME = 1200L; // ~60s before a bridge/pillar block self-vanishes
+    private static final long VOID_LIFETIME = 2000L; // ~100s before a bridge/pillar block self-vanishes
 
-    /** Lay one transient void block (infinite supply); it auto-restores to its original state ~60s later. */
+    /** Lay one transient void block (infinite supply); it auto-restores to its original state ~100s later. */
     private boolean placeVoid(ServerWorld world, GirlfriendEntity gf, BlockPos pos) {
-        AbilityManager.blocks().place(world, pos, world.getTime() + 2400L, null); // 120秒后自动消失
+        AbilityManager.blocks().place(world, pos, world.getTime() + VOID_LIFETIME, null);
         gf.swingHand(Hand.MAIN_HAND);
         blocksUsed++;
         placeCooldown = 6;

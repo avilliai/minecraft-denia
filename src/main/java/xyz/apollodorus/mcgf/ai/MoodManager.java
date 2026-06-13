@@ -65,14 +65,18 @@ public final class MoodManager {
             if (owner == null || gf.squaredDistanceTo(owner) > 64.0 * 64.0) continue;
 
             State s = STATES.computeIfAbsent(gf.getUuid(), k -> new State());
-            String situation = detect(gf, owner, s);
 
+            // 先判冷却：还在冷却里就根本不跑 detect()——否则 detect() 会就地推进基线(群系/天气/昼夜)，
+            // 把冷却期内发生的变化(尤其是路过新群系)悄悄吞掉，等冷却结束她已经「见过」了。这正是
+            // 新群系感言「消失」的主因。
+            if (tick - s.lastSpoke < minGap) continue;
+
+            String situation = detect(gf, owner, s);
             if (situation == null) {
                 if (!ambientWindow) continue;
                 if (gf.getRandom().nextDouble() > cfg.behavior.proactiveChance) continue;
                 situation = ambient(gf);
             }
-            if (tick - s.lastSpoke < minGap) continue;
 
             s.lastSpoke = tick;
             MCGirlfriendMod.BRAIN.proactive(gf, situation);
@@ -140,40 +144,36 @@ public final class MoodManager {
 
         GirlfriendConfig.Prompts p = ConfigManager.get().prompts;
 
-        // 优先级：玩家生命 > 自己生命 > 打雷 > 敌人出现 > 夜晚 > 环境变化 > 玩家行为 > 天气 > 新区域
-        if (owner.getHealth() <= 6.0f) return p.lowHealthOwner;
-        if (gf.getHealth() <= 8.0f) return p.lowHealthSelf;
-        if (thunderStart) return p.thunderStorm;
-        if (newHostiles) return p.newHostiles;
-        if (nightfall) return p.nightfall;
+        // 优先级：玩家生命 > 自己生命 > 打雷 > 敌人出现 > 夜晚 > 新群系 > 环境变化 > 玩家行为 > 天气
+        if (owner.getHealth() <= 6.0f) return GirlfriendConfig.pickOne(p.lowHealthOwner);
+        if (gf.getHealth() <= 8.0f) return GirlfriendConfig.pickOne(p.lowHealthSelf);
+        if (thunderStart) return GirlfriendConfig.pickOne(p.thunderStorm);
+        if (newHostiles) return GirlfriendConfig.pickOne(p.newHostiles);
+        if (nightfall) return GirlfriendConfig.pickOne(p.nightfall);
 
-        // 环境变化（偶尔触发，避免过于频繁）
-        if (enteredDarkPlace && gf.getRandom().nextDouble() < 0.3) return p.inDarkPlace;
-        if (enteredHighPlace && gf.getRandom().nextDouble() < 0.4) return p.highPlace;
-        if (enteredWater && gf.getRandom().nextDouble() < 0.3) return p.underwaterOrCave;
-
-        // 玩家行为反应（低频率，避免打断）
-        if (playerStartedMining && gf.getRandom().nextDouble() < 0.2) return p.playerMining;
-        if (playerStartedBuilding && gf.getRandom().nextDouble() < 0.25) return p.playerBuilding;
-        if (playerStartedFishing && gf.getRandom().nextDouble() < 0.3) return p.playerFishing;
-        if (playerStartedCrafting && gf.getRandom().nextDouble() < 0.2) return p.playerCrafting;
-
-        // 天气+环境组合反应 + 新生物群系（必定触发，不再随机）
+        // 进入新群系：她会像真的看到这片地方一样主动感叹一句。放在随机环境/行为碎碎念之前，否则一进新
+        // 群系常被一句随机的「好暗呀」之类抢掉、再也不播报了（这是之前感言「消失」的另一半原因）。
         if (newBiome) {
-            // 天气+环境组合反应（优先）
             String combined = getWeatherBiomeCombination(biome, raining, night);
             if (combined != null) return combined;
-
-            // 具体生物群系反应
             String specific = getSpecificBiomeReaction(p, biome);
             if (specific != null) return specific;
-
-            // 通用生物群系反应（兜底）
-            return p.newBiome.replace("{biome}", biome);
+            return GirlfriendConfig.pickOne(p.newBiome).replace("{biome}", biome);
         }
 
-        if (rainStart) return p.rainStart;
-        if (weatherClear) return p.weatherClear;
+        // 环境变化（偶尔触发，避免过于频繁）
+        if (enteredDarkPlace && gf.getRandom().nextDouble() < 0.3) return GirlfriendConfig.pickOne(p.inDarkPlace);
+        if (enteredHighPlace && gf.getRandom().nextDouble() < 0.4) return GirlfriendConfig.pickOne(p.highPlace);
+        if (enteredWater && gf.getRandom().nextDouble() < 0.3) return GirlfriendConfig.pickOne(p.underwaterOrCave);
+
+        // 玩家行为反应（低频率，避免打断）
+        if (playerStartedMining && gf.getRandom().nextDouble() < 0.2) return GirlfriendConfig.pickOne(p.playerMining);
+        if (playerStartedBuilding && gf.getRandom().nextDouble() < 0.25) return GirlfriendConfig.pickOne(p.playerBuilding);
+        if (playerStartedFishing && gf.getRandom().nextDouble() < 0.3) return GirlfriendConfig.pickOne(p.playerFishing);
+        if (playerStartedCrafting && gf.getRandom().nextDouble() < 0.2) return GirlfriendConfig.pickOne(p.playerCrafting);
+
+        if (rainStart) return GirlfriendConfig.pickOne(p.rainStart);
+        if (weatherClear) return GirlfriendConfig.pickOne(p.weatherClear);
 
         return null;
     }
@@ -183,16 +183,16 @@ public final class MoodManager {
         GirlfriendConfig.Prompts p = ConfigManager.get().prompts;
 
         if (raining && (biome.contains("forest") || biome.contains("taiga"))) {
-            return p.rainyForest;
+            return GirlfriendConfig.pickOne(p.rainyForest);
         }
         if (raining && (biome.contains("beach") || biome.contains("ocean"))) {
-            return p.rainyBeach;
+            return GirlfriendConfig.pickOne(p.rainyBeach);
         }
         if (!raining && (biome.contains("meadow") || biome.contains("plains"))) {
-            return p.sunnyMeadow;
+            return GirlfriendConfig.pickOne(p.sunnyMeadow);
         }
         if (night && (biome.contains("beach") || biome.contains("ocean"))) {
-            return p.nightBeach;
+            return GirlfriendConfig.pickOne(p.nightBeach);
         }
 
         return null;
@@ -201,63 +201,63 @@ public final class MoodManager {
     /** 获取具体生物群系的反应 */
     private static String getSpecificBiomeReaction(GirlfriendConfig.Prompts p, String biome) {
         // 樱花林
-        if (biome.contains("cherry")) return p.biomeCherryGrove;
+        if (biome.contains("cherry")) return GirlfriendConfig.pickOne(p.biomeCherryGrove);
 
         // 针叶林
-        if (biome.contains("taiga") || biome.contains("spruce")) return p.biomeTaiga;
+        if (biome.contains("taiga") || biome.contains("spruce")) return GirlfriendConfig.pickOne(p.biomeTaiga);
 
         // 白桦林
-        if (biome.contains("birch")) return p.biomeBirchForest;
+        if (biome.contains("birch")) return GirlfriendConfig.pickOne(p.biomeBirchForest);
 
         // 繁花森林
-        if (biome.contains("flower")) return p.biomeFlowerForest;
+        if (biome.contains("flower")) return GirlfriendConfig.pickOne(p.biomeFlowerForest);
 
         // 普通森林
-        if (biome.contains("forest")) return p.biomeForest;
+        if (biome.contains("forest")) return GirlfriendConfig.pickOne(p.biomeForest);
 
         // 河流
-        if (biome.contains("river")) return p.biomeRiver;
+        if (biome.contains("river")) return GirlfriendConfig.pickOne(p.biomeRiver);
 
         // 海滩
-        if (biome.contains("beach")) return p.biomeBeach;
+        if (biome.contains("beach")) return GirlfriendConfig.pickOne(p.biomeBeach);
 
         // 海洋
-        if (biome.contains("ocean")) return p.biomeOcean;
+        if (biome.contains("ocean")) return GirlfriendConfig.pickOne(p.biomeOcean);
 
         // 草甸
-        if (biome.contains("meadow")) return p.biomeMeadow;
+        if (biome.contains("meadow")) return GirlfriendConfig.pickOne(p.biomeMeadow);
 
         // 平原
-        if (biome.contains("plains")) return p.biomePlains;
+        if (biome.contains("plains")) return GirlfriendConfig.pickOne(p.biomePlains);
 
         // 沙漠
-        if (biome.contains("desert")) return p.biomeDesert;
+        if (biome.contains("desert")) return GirlfriendConfig.pickOne(p.biomeDesert);
 
         // 恶地
-        if (biome.contains("badlands") || biome.contains("mesa")) return p.biomeBadlands;
+        if (biome.contains("badlands") || biome.contains("mesa")) return GirlfriendConfig.pickOne(p.biomeBadlands);
 
         // 雪地
         if (biome.contains("snowy") || biome.contains("frozen") || biome.contains("ice")) {
-            return p.biomeSnowy;
+            return GirlfriendConfig.pickOne(p.biomeSnowy);
         }
 
         // 蘑菇岛
-        if (biome.contains("mushroom")) return p.biomeMushroom;
+        if (biome.contains("mushroom")) return GirlfriendConfig.pickOne(p.biomeMushroom);
 
         // 丛林
-        if (biome.contains("jungle")) return p.biomeJungle;
+        if (biome.contains("jungle")) return GirlfriendConfig.pickOne(p.biomeJungle);
 
         // 沼泽
-        if (biome.contains("swamp")) return p.biomeSwamp;
+        if (biome.contains("swamp")) return GirlfriendConfig.pickOne(p.biomeSwamp);
 
         // 黑森林
-        if (biome.contains("dark_forest")) return p.biomeDarkForest;
+        if (biome.contains("dark_forest")) return GirlfriendConfig.pickOne(p.biomeDarkForest);
 
         // 洞穴
-        if (biome.contains("cave") || biome.contains("dripstone")) return p.biomeCave;
+        if (biome.contains("cave") || biome.contains("dripstone")) return GirlfriendConfig.pickOne(p.biomeCave);
 
         // 深暗之域
-        if (biome.contains("deep_dark")) return p.biomeDeepDark;
+        if (biome.contains("deep_dark")) return GirlfriendConfig.pickOne(p.biomeDeepDark);
 
         return null;
     }
@@ -321,7 +321,7 @@ public final class MoodManager {
      */
     private static String ambient(GirlfriendEntity gf) {
         GirlfriendConfig.Prompts p = ConfigManager.get().prompts;
-        String base = gf.isOwnerStationary() ? p.idleParked : p.idleTravel;
+        String base = GirlfriendConfig.pickOne(gf.isOwnerStationary() ? p.idleParked : p.idleTravel);
         List<String> topics = p.ambientTopics;
         if (topics == null || topics.isEmpty() || gf.getRandom().nextDouble() < 0.4) return base;
         return topics.get(gf.getRandom().nextInt(topics.size()));

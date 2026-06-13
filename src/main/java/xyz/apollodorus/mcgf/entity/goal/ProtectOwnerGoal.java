@@ -38,6 +38,8 @@ public class ProtectOwnerGoal extends Goal {
     // brief cooldown so a just-dropped unreachable mob isn't re-locked instantly
     private LivingEntity recentlyDropped;
     private long dropCooldownUntil;
+    // periodic re-target so a near threat (esp. one hitting her) takes over from a far one
+    private int retargetCd;
 
     public ProtectOwnerGoal(GirlfriendEntity gf) {
         this.gf = gf;
@@ -98,6 +100,53 @@ public class ProtectOwnerGoal extends Goal {
     public void stop() {
         gf.setTarget(null);
         this.candidate = null;
+    }
+
+    /**
+     * 周期性重选目标：盯着远处怪打、却被近处怪贴脸打死，是一形态风筝的主要死法。这里每 ~0.5s 复查一次——
+     * 正在打她的近处怪最优先，其次是明显更近且能打的威胁——让她始终先解决离自己最近的威胁。
+     */
+    @Override
+    public void tick() {
+        if (--retargetCd > 0) return;
+        retargetCd = 10;
+        LivingEntity current = gf.getTarget();
+        if (current == null || !gf.isCombatEnabled()) return;
+        GirlfriendConfig.Behavior b = ConfigManager.get().behavior;
+        double curSq = gf.squaredDistanceTo(current);
+
+        LivingEntity attacker = gf.getAttacker();
+        if (attacker instanceof HostileEntity && attacker.isAlive() && attacker != current
+                && gf.squaredDistanceTo(attacker) + 1.0 < curSq) {
+            switchTo(attacker);
+            return;
+        }
+        LivingEntity nearer = nearestEngageable(b);
+        if (nearer != null && nearer != current && gf.squaredDistanceTo(nearer) + 9.0 < curSq) {
+            switchTo(nearer);
+        }
+    }
+
+    private void switchTo(LivingEntity t) {
+        gf.setTarget(t);
+        this.lastDistSq = Double.MAX_VALUE;
+        this.noProgressTicks = 0;
+    }
+
+    /** Nearest hostile she can honestly engage (see + reach/range), scanned around owner-or-self. */
+    private LivingEntity nearestEngageable(GirlfriendConfig.Behavior b) {
+        Entity anchor = gf.getOwner() != null ? gf.getOwner() : gf;
+        Box box = anchor.getBoundingBox().expand(b.guardRadius);
+        LivingEntity best = null;
+        double bestSq = Double.MAX_VALUE;
+        for (Entity e : gf.getEntityWorld().getOtherEntities(gf, box,
+                x -> x instanceof HostileEntity && x.isAlive())) {
+            LivingEntity le = (LivingEntity) e;
+            if (!canEngage(le, b)) continue;
+            double sq = gf.squaredDistanceTo(e);
+            if (sq < bestSq) { bestSq = sq; best = le; }
+        }
+        return best;
     }
 
     private LivingEntity findThreat() {
