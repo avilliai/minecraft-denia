@@ -8,10 +8,12 @@ import xyz.apollodorus.mcgf.combat.AbilityManager;
 import xyz.apollodorus.mcgf.config.ConfigManager;
 import xyz.apollodorus.mcgf.entity.GirlfriendEntity;
 
+import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.List;
 
 /**
- * 自动照明：当周围光照等级过低时，在她周围或头顶放置悬浮的发光虚质方块提供照明。
+ * 自动照明：当周围光照等级过低时，在她附近（左右/后面/头顶）放置悬浮的发光虚质方块提供照明。
  * 虚质方块有自然发光效果，下矿时特别有用，省火把了。绝不替换脚下/周围的实心方块，以免把矿物占掉。
  */
 public class AutoLightGoal extends Goal {
@@ -72,25 +74,57 @@ public class AutoLightGoal extends Goal {
 
     /**
      * 选放置点：只在空气/可替换格里放一块悬浮的发光虚质块（~100s 后自动消失），绝不替换脚下/周围的实心
-     * 方块，以免把矿物占掉。优先正上方（头顶上一格），其次她周围头部/脚部高度的空位，再不行往上多找一格。
-     * 隧道/矿洞里她刚挖出的空间通常就有这些空位。
+     * 方块，以免把矿物占掉。
+     *
+     * 关键：绝不放进她自己占据的两格（脚 foot、头 foot.up(1)），也不放在她头顶正上方近处——否则寻路/
+     * 跳跃时她的头会卡进虚质方块里窒息卡死。改为优先在她身侧/身后放置，随机选方向，离她远一点；正上方
+     * 只在抬高到头顶以上至少两格、且水平错开时才作为兜底。
      */
     private BlockPos findBestLightPosition(ServerWorld world) {
         BlockPos foot = gf.getBlockPos();
-        // 1) 正上方（头顶上方一格）——最不挡路，绝不占矿。
-        BlockPos overhead = foot.up(2);
-        if (canPlaceLight(world, overhead)) return overhead;
-        // 2) 她周围的空位：先头部高度、再脚部高度的 4 个水平相邻格。
-        for (int dy = 1; dy >= 0; dy--) {
-            for (Direction d : Direction.Type.HORIZONTAL) {
-                BlockPos p = foot.up(dy).offset(d);
-                if (canPlaceLight(world, p)) return p;
-            }
+
+        // 候选点分三档优先级；每档内部随机打乱方向，避免每次都往同一边放。
+        // 档 1：紧贴身侧/身后（距离 1 格，头部高度与稍高一格）——在她旁边，绝不会卡头。
+        // 档 2：离她远一点（距离 2 格）——空间够时优先体验更好。
+        // 档 3：头顶正上方但抬高到 up(3)（头顶以上两格）作为最后兜底，留出空隙不卡头。
+        List<BlockPos> tier1 = new ArrayList<>();
+        List<BlockPos> tier2 = new ArrayList<>();
+        for (Direction d : Direction.Type.HORIZONTAL) {
+            tier1.add(foot.offset(d).up(1));
+            tier1.add(foot.offset(d).up(2));
+            tier2.add(foot.offset(d, 2).up(1));
+            tier2.add(foot.offset(d, 2).up(2));
         }
-        // 3) 再高一格兜底。
+        shuffle(tier1);
+        shuffle(tier2);
+
+        // 远一点优先：先随机的远处（档 2），再身侧（档 1）。
+        for (BlockPos p : tier2) {
+            if (isSafe(world, foot, p)) return p;
+        }
+        for (BlockPos p : tier1) {
+            if (isSafe(world, foot, p)) return p;
+        }
+        // 档 3：头顶以上两格兜底，留出空隙不卡头。
         BlockPos high = foot.up(3);
-        if (canPlaceLight(world, high)) return high;
+        if (isSafe(world, foot, high)) return high;
         return null;
+    }
+
+    /** 用她自己的随机源就地洗牌（Fisher-Yates），避免依赖 java.util.Random。 */
+    private void shuffle(List<BlockPos> list) {
+        for (int i = list.size() - 1; i > 0; i--) {
+            int j = gf.getRandom().nextInt(i + 1);
+            BlockPos tmp = list.get(i);
+            list.set(i, list.get(j));
+            list.set(j, tmp);
+        }
+    }
+
+    /** 放置点必须能放光块，且绝不落在她自己占据的两格（脚 + 头），杜绝卡头窒息。 */
+    private boolean isSafe(ServerWorld world, BlockPos foot, BlockPos pos) {
+        if (pos.equals(foot) || pos.equals(foot.up(1))) return false; // 她的身体两格，绝不占
+        return canPlaceLight(world, pos);
     }
 
     /** 只把光块放进空气/可替换格——绝不替换实心方块（脚下/周围的矿都不动）；也不重复放已有的光块。 */

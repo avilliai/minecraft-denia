@@ -1,8 +1,20 @@
+# 写在前面
+> 原本打算制作一个通用的minecraft ai player，但在制作娅娅的攻击模式和形态切换以及相关物品后，这个项目已经不适合用于重新制作另一个ai player了。     
+> 主要代码由claude 4.8完成。
+## 关于皮肤
+[原皮肤](https://namemc.com/skin/479cedd3e79bc95a)       
+**我为了制作二形态把皮肤改得这么难看，挺对不起原作者的。🥲**
+## 关于roleplay
+提示词还不够好     
+速度和质量的平衡没有做好
+## 关于语音
+indextts2是不错的选择，可惜暂时没有时间去做。
+
 # Minecraft AI 伴随实体（Fabric 模组）
 
+
 一个由 LLM 驱动的 Minecraft 伴随实体（NPC 同伴）：会跟随、对话、协助作战与采集，回复同时通过
-**GPT-SoVITS** 朗读出来。从原 mineflayer 机器人迁移而来，改用 Fabric 模组形式以绕过
-服务器的模组校验。
+**GPT-SoVITS** 朗读出来。
 
 默认人格为《鸣潮》角色「达妮娅」，可在配置里替换为任意人格（人格、皮肤、语音参考音频均可自定义）。
 
@@ -50,12 +62,11 @@
 ## 构建
 
 ```bash
-cd mc-girlfriend
-./gradlew build          # 产出 build/libs/mc-girlfriend-<ver>.jar
+./gradlew build          
 ./gradlew runClient      # 开发环境启动客户端测试
 ```
 
-把 `build/libs/mc-girlfriend-*.jar`（非 `-sources`）丢进 `.minecraft/mods/`，连同
+把 `build/libs/-*.jar`（非 `-sources`）丢进 `.minecraft/mods/`，连同
 Fabric Loader + Fabric API 即可。
 
 ### 本机构建环境说明（中国大陆网络）
@@ -64,7 +75,7 @@ Fabric Loader + Fabric API 即可。
 
 - `gradle-wrapper.properties` 的 `distributionUrl` 指向腾讯云镜像
   （`mirrors.cloud.tencent.com/gradle`）。
-- JDK 21 从清华 TUNA 的 Adoptium 镜像下载，解压到 `mc-girlfriend/.jdks/`（已 gitignore）。
+- JDK 21 从清华 TUNA 的 Adoptium 镜像下载，解压到 `根目录/.jdks/`（已 gitignore）。
 - `gradle.properties` 用 `org.gradle.java.home` 让 Gradle 守护进程跑在 JDK 21 上
   （Loom 1.16 要求），并关闭 foojay 自动下载（其源在 github）。
 
