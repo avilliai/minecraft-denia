@@ -3,6 +3,7 @@ package xyz.apollodorus.mcgf.entity.goal;
 import net.minecraft.entity.ai.goal.Goal;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Direction;
 import xyz.apollodorus.mcgf.combat.AbilityManager;
 import xyz.apollodorus.mcgf.config.ConfigManager;
 import xyz.apollodorus.mcgf.entity.GirlfriendEntity;
@@ -10,8 +11,8 @@ import xyz.apollodorus.mcgf.entity.GirlfriendEntity;
 import java.util.EnumSet;
 
 /**
- * 自动照明：当周围光照等级过低时，在脚下放置虚质方块提供照明。
- * 虚质方块有自然发光效果，下矿时特别有用，省火把了。
+ * 自动照明：当周围光照等级过低时，在她周围或头顶放置悬浮的发光虚质方块提供照明。
+ * 虚质方块有自然发光效果，下矿时特别有用，省火把了。绝不替换脚下/周围的实心方块，以免把矿物占掉。
  */
 public class AutoLightGoal extends Goal {
     private static final int LIGHT_THRESHOLD = 7; // 光照等级低于此值时放置
@@ -70,33 +71,32 @@ public class AutoLightGoal extends Goal {
     }
 
     /**
-     * 选放置点：首选把脚下那块普通实心地板临时换成发光虚质块（120s 后自动还原），她就站在发光地板上——
-     * 隧道里、开阔地都管用，也不会挡路。脚下动不了（基岩/方块实体/本来就是空）时，退而在头顶上方找个
-     * 黑暗的空气格放一个悬浮光块。之前的实现要求「脚下是空气」，可她几乎总站在实心地面上，所以从不触发。
+     * 选放置点：只在空气/可替换格里放一块悬浮的发光虚质块（~100s 后自动消失），绝不替换脚下/周围的实心
+     * 方块，以免把矿物占掉。优先正上方（头顶上一格），其次她周围头部/脚部高度的空位，再不行往上多找一格。
+     * 隧道/矿洞里她刚挖出的空间通常就有这些空位。
      */
     private BlockPos findBestLightPosition(ServerWorld world) {
         BlockPos foot = gf.getBlockPos();
-        BlockPos ground = foot.down();
-        if (canReplaceFloor(world, ground)) return ground;
-
+        // 1) 正上方（头顶上方一格）——最不挡路，绝不占矿。
         BlockPos overhead = foot.up(2);
-        if (canPlaceInAir(world, overhead)) return overhead;
+        if (canPlaceLight(world, overhead)) return overhead;
+        // 2) 她周围的空位：先头部高度、再脚部高度的 4 个水平相邻格。
+        for (int dy = 1; dy >= 0; dy--) {
+            for (Direction d : Direction.Type.HORIZONTAL) {
+                BlockPos p = foot.up(dy).offset(d);
+                if (canPlaceLight(world, p)) return p;
+            }
+        }
+        // 3) 再高一格兜底。
+        BlockPos high = foot.up(3);
+        if (canPlaceLight(world, high)) return high;
         return null;
     }
 
-    /** 普通实心地板才可被临时替换：排除空气/可替换方块、已放的光块、基岩等不可破坏方块、箱子/熔炉等方块实体。 */
-    private boolean canReplaceFloor(ServerWorld world, BlockPos pos) {
-        var state = world.getBlockState(pos);
-        if (state.isAir() || state.isReplaceable()) return false;
-        if (state.isOf(xyz.apollodorus.mcgf.block.ModBlocks.VOID_BLOCK)) return false; // 别把已放的光块当地板重复替换
-        if (state.getHardness(world, pos) < 0) return false;   // 基岩/屏障等不可破坏
-        return world.getBlockEntity(pos) == null;              // 别动有数据的方块（箱子/熔炉…）
-    }
-
-    /** 头顶悬浮光块的落点：必须是空气/可替换，且当前确实偏暗。 */
-    private boolean canPlaceInAir(ServerWorld world, BlockPos pos) {
+    /** 只把光块放进空气/可替换格——绝不替换实心方块（脚下/周围的矿都不动）；也不重复放已有的光块。 */
+    private boolean canPlaceLight(ServerWorld world, BlockPos pos) {
         var state = world.getBlockState(pos);
         if (!state.isAir() && !state.isReplaceable()) return false;
-        return world.getLightLevel(pos) < LIGHT_THRESHOLD;
+        return !state.isOf(xyz.apollodorus.mcgf.block.ModBlocks.VOID_BLOCK);
     }
 }

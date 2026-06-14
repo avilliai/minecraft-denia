@@ -13,6 +13,9 @@ import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.ai.goal.LookAroundGoal;
 import net.minecraft.entity.ai.goal.LookAtEntityGoal;
 import net.minecraft.entity.ai.goal.SwimGoal;
+import net.minecraft.entity.ai.pathing.EntityNavigation;
+import net.minecraft.entity.ai.pathing.LandPathNodeMaker;
+import net.minecraft.entity.ai.pathing.MobNavigation;
 import net.minecraft.entity.attribute.DefaultAttributeContainer;
 import net.minecraft.entity.attribute.EntityAttributeInstance;
 import net.minecraft.entity.attribute.EntityAttributes;
@@ -124,6 +127,9 @@ public class GirlfriendEntity extends PathAwareEntity {
     // 去看箱子时「带路」状态：她朝箱子走时即便玩家跟过来也不被跟随打断，而是把玩家带到箱子边。
     private boolean leadingChest;
 
+    // 空闲主动采集（如收菜）时的「专心干活」状态：开始后即便玩家走动也不被跟随打断，直到活干完或玩家走太远。
+    private boolean idleWorking;
+
     // owner-attacked: rushing to his side becomes top priority for a short window
     private long rushUntilTime;
 
@@ -182,6 +188,20 @@ public class GirlfriendEntity extends PathAwareEntity {
         this.goalSelector.add(11, new LookAroundGoal(this));
 
         this.targetSelector.add(1, new ProtectOwnerGoal(this));
+    }
+
+    /**
+     * 让她能像村民那样寻路穿过（并自动开/关）木门——否则原版寻路把关着的门当墙，她就到不了屋外的菜地等
+     * 地方（修复「home 附近不破坏 → 不走正门去菜地」）。仅木门；铁门仍需红石、她打不开，符合原版。
+     */
+    @Override
+    protected EntityNavigation createNavigation(World world) {
+        MobNavigation nav = new MobNavigation(this, world);
+        nav.setCanOpenDoors(true);
+        if (nav.getNodeMaker() instanceof LandPathNodeMaker maker) {
+            maker.setCanEnterOpenDoors(true); // 关着的木门也算可通行（配合 canOpenDoors → WALKABLE_DOOR）
+        }
+        return nav;
     }
 
     @Override
@@ -459,15 +479,18 @@ public class GirlfriendEntity extends PathAwareEntity {
         // Tear down any active 蚀域 first so terrain restores and the owner's domain buff never leaks.
         if (getEntityWorld() instanceof ServerWorld) AbilityManager.endDomainFor(this);
         if (getEntityWorld() instanceof ServerWorld && ownerUuid != null) {
-            // Fold worn armor + held items into the backpack so the revive keeps her gear.
+            DownedManager.Snapshot snap = new DownedManager.Snapshot();
+            // 装备单独存进 snap.equipment（不再塞进可能已满的背包，免得溢出被丢弃 → 死亡掉东西）。
+            // 同时清空装备槽，免得原版死亡把这些装备掉到地上。复活时 ReviveService.restore() 会从
+            // snap.equipment 重新穿戴回来。
             for (EquipmentSlot slot : EquipmentSlot.values()) {
                 ItemStack worn = getEquippedStack(slot);
                 if (!worn.isEmpty()) {
-                    inventory.addStack(worn.copy());
+                    snap.equipment.put(slot.getName(),
+                        Registries.ITEM.getId(worn.getItem()) + " " + worn.getCount());
                     equipStack(slot, ItemStack.EMPTY);
                 }
             }
-            DownedManager.Snapshot snap = new DownedManager.Snapshot();
             snap.inventory = exportInventory();
             snap.affection = affection;
             snap.x = getX();
@@ -643,6 +666,11 @@ public class GirlfriendEntity extends PathAwareEntity {
     /** True while she's walking the owner over to a noticed chest — follow yields so she leads instead of breaking off. */
     public boolean isLeadingChest() { return leadingChest; }
     public void setLeadingChest(boolean v) { this.leadingChest = v; }
+
+    /** True while she's busy on a self-started idle gather (harvest/forage) — follow yields so owner movement
+     *  doesn't yank her off it; WorkGoal drops it itself if the owner strays too far. */
+    public boolean isIdleWorking() { return idleWorking; }
+    public void setIdleWorking(boolean v) { this.idleWorking = v; }
 
     // --- 寻路信标带路 ---
 

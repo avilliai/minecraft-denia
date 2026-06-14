@@ -35,6 +35,8 @@ public class FollowOwnerGoal extends Goal {
         // While she's leading the owner over to a noticed chest, let that goal finish (she leads him there)
         // instead of follow yanking her back — PerceiveChestGoal bails on its own if he strays too far.
         if (gf.isLeadingChest()) return false;
+        // 同理：她空闲时主动去收菜/采集时，别因玩家走动就把她拽回来——WorkGoal 自己会在玩家走太远时放手。
+        if (gf.isIdleWorking()) return false;
         // 她在床上打盹时，跟随完全让位——不再「玩家一动就把她叫醒」。何时醒由 SleepAtHomeGoal 决定
         // （睡够自然醒 / 床被拆 / 玩家走出 50 格）；战斗、冲向受击玩家等更高优先级目标仍会照常唤醒她。
         if (gf.isSleeping()) return false;
@@ -49,6 +51,7 @@ public class FollowOwnerGoal extends Goal {
     public boolean shouldContinue() {
         if (!gf.isFollowing() || target == null || gf.getTask() != null || gf.getTarget() != null) return false;
         if (gf.isLeadingChest()) return false;
+        if (gf.isIdleWorking()) return false;
         if (gf.isSleeping()) return false;
         if (target.isRemoved() || target.isSpectator()) return false;
         // While the owner is parked she only needs to get back inside the roam leash; while he's

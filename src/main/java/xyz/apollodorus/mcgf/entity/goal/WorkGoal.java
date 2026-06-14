@@ -4,6 +4,7 @@ import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
 import net.minecraft.entity.ai.goal.Goal;
+import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.BlockItem;
 import net.minecraft.item.Item;
 import net.minecraft.item.Items;
@@ -45,6 +46,7 @@ import java.util.function.Predicate;
 public class WorkGoal extends Goal {
     private static final long BLACKLIST_TICKS = 1200L; // ~1 minute before she'll retry a spot
     private static final double REACH_SQ = 16.0;       // ~4 blocks: break range
+    private static final double IDLE_ABORT_SQ = 20.0 * 20.0; // 空闲采集时玩家走出这么远才放手去跟随（与 PerceiveChestGoal 一致）
 
     private final GirlfriendEntity gf;
     private final Map<BlockPos, Long> blacklist = new HashMap<>();
@@ -99,8 +101,14 @@ public class WorkGoal extends Goal {
     @Override
     public boolean shouldContinue() {
         if (gf.getTarget() != null) return false;
-        if (gf.getTask() != null) return true;
-        return idleGatherAllowed();
+        if (gf.getTask() != null) return true;            // commanded work always continues
+        // 空闲采集：开始后不再因玩家走动而中止（像「带玩家去箱子边」那样），只有采集被关掉、
+        // 或玩家走出 IDLE_ABORT 距离时才放手——届时 idleWorking 清掉，跟随/传送接管。
+        GirlfriendConfig.Behavior b = ConfigManager.get().behavior;
+        if (!gf.isGatherEnabled() || !b.autoIdleGather) return false;
+        PlayerEntity owner = gf.getOwner();
+        if (owner != null && gf.squaredDistanceTo(owner) > IDLE_ABORT_SQ) return false;
+        return gf.isIdleWorking();
     }
 
     @Override
@@ -109,6 +117,7 @@ public class WorkGoal extends Goal {
         this.breakProgress = 0;
         this.lastStage = -1;
         this.stuckTicks = 0;
+        gf.setIdleWorking(gf.getTask() == null); // 空闲采集 → 专心干活，跟随让位（指令任务本就让位）
         gf.setActivity(activityLabel());
     }
 
@@ -116,6 +125,7 @@ public class WorkGoal extends Goal {
     public void stop() {
         if (gf.getEntityWorld() instanceof ServerWorld sw) resetMining(sw);
         this.target = null;
+        gf.setIdleWorking(false);
         gf.getNavigation().stop();
         if (gf.getTask() == null) gf.setActivity("闲着");
     }
@@ -126,12 +136,14 @@ public class WorkGoal extends Goal {
         long now = sw.getTime();
         Task active = gf.getTask();
         gf.setActivity(activityLabel());
+        if (active != null) gf.setIdleWorking(false); // 有指令任务时不算空闲采集
 
         if (target == null || sw.getBlockState(target).isAir()) {
             if (--rescanCd > 0) return;
             rescanCd = 8;
             resetMining(sw);
             target = (active != null) ? findTargetFor(active) : findIdleTarget();
+            if (active == null) gf.setIdleWorking(target != null); // 空闲采集：有活就专心干，没活就放手
             stuckTicks = 0;
             if (target == null) {
                 if (active != null) onActiveNoTarget(active);

@@ -29,11 +29,11 @@ public final class Tools {
         arr.add(fn("follow_player", "玩家让你过来、跟着走时使用。", emptyParams()));
         arr.add(fn("come_to_player", "你想主动靠近玩家一次时使用（会开始跟随）。", emptyParams()));
         arr.add(fn("stop_moving", "玩家让你停下、在原地等待时使用（会停止当前任务）。", emptyParams()));
-        arr.add(fn("mine_ore", "去附近挖矿石。可选 count 指定块数。", countParam("要挖的矿石数量")));
-        arr.add(fn("chop_logs", "去附近砍树收集原木。可选 count 指定块数。", countParam("要砍的原木数量")));
+        arr.add(fn("mine_ore", "去附近挖矿石。可选 count 指定块数。", countParam("要挖的矿石数量；玩家没说具体数就别填，默认16")));
+        arr.add(fn("chop_logs", "去附近砍树收集原木。可选 count 指定块数。", countParam("要砍的原木数量；玩家没说具体数就别填，默认16")));
         arr.add(fn("harvest_crops", "去附近收割成熟的庄稼并自动补种。", emptyParams()));
         arr.add(fn("obtain_item", "玩家想要某样东西时使用：背包里有就直接给，没有就去附近采集。item 可用中文俗称。",
-            itemCountParams("物品名（中/英），如 铁、煤、钻石、木头、小麦、diorite", "需要的数量")));
+            itemCountParams("物品名（中/英），如 铁、煤、钻石、木头、小麦、diorite", "需要的数量；玩家明确说了数量才填，没说就别填（采集类默认16）")));
         arr.add(fn("remember_need", "记住玩家想要的东西，之后遇到就顺手收集。",
             itemCountParams("物品名（中/英）", "想要的数量")));
         arr.add(fn("give_items_to_player", "把你背包里的某样东西给玩家。",
@@ -107,7 +107,11 @@ public final class Tools {
     private static String obtain(GirlfriendEntity gf, JsonObject args) {
         Item item = WorkUtil.resolveItem(str(args, "item"));
         if (item == null) return err("不认识这个物品");
-        int want = count(args, 1);
+        // 没指定数量时：可采集的方块/矿物默认一批(=defaultGatherCount, 16)，一次性物品(工具/食物)默认 1。
+        // 修复「让她挖圆石却只挖一个」：圆石走 obtain（非矿石），以前默认写死 1。
+        int fallback = WorkGoal.isGettable(Task.obtain(item, 1))
+            ? ConfigManager.get().behavior.defaultGatherCount : 1;
+        int want = count(args, fallback);
         int have = gf.countItem(item);
         int giveNow = Math.min(have, want);
         int given = giveNow > 0 ? gf.giveToOwner(item, giveNow) : 0;
