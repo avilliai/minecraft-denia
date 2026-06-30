@@ -46,6 +46,13 @@ public final class ChatBrain {
     private final Map<UUID, Session> sessions = new ConcurrentHashMap<>();
     private final Set<UUID> pending = ConcurrentHashMap.newKeySet();
     private final Set<UUID> proactivePending = ConcurrentHashMap.newKeySet();
+    /**
+     * Per-girlfriend ring buffer of her most recent spoken lines (both chat replies and proactive
+     * remarks), keyed by the gf entity UUID. Injected into later prompts as a "don't repeat these"
+     * block — the main cure for the repetitive 黏人套话, since {@link #proactive} is otherwise stateless.
+     */
+    private final Map<UUID, Deque<String>> recentLines = new ConcurrentHashMap<>();
+    private static final int RECENT_MAX = 8;
     private final ExecutorService executor;
 
     public ChatBrain() {
@@ -91,6 +98,7 @@ public final class ChatBrain {
         String system = cfg.fillName(gf.isFormTwo() ? cfg.llm.systemPromptForm2 : cfg.llm.systemPrompt)
             + "\n\n[环境]\n" + context;
         if (!session.memory.isBlank()) system += "\n\n[关于你和他的记忆]\n" + session.memory;
+        system += recentBlock(gf.getUuid());
 
         JsonArray messages = new JsonArray();
         messages.add(msg("system", system));
@@ -136,6 +144,7 @@ public final class ChatBrain {
         final String finalReply = reply;
 
         recordRound(session, userMsg, finalReply, cfg);
+        recordSpoken(gf.getUuid(), finalReply);
 
         LOGGER.info("[mcgf] -> {}: {}", player.getName().getString(), finalReply);
         server.execute(() -> {
@@ -218,16 +227,21 @@ public final class ChatBrain {
      * hostiles, finished a task, etc.). Runs off-thread; silently no-ops if she's
      * already busy with a reply. Caller must invoke on the server thread.
      */
-    public void proactive(GirlfriendEntity gf, String situation) {
+    /**
+     * Queue a one-off proactive line. Returns false if she's busy or can't speak right now
+     * (caller should not consume an event cooldown in that case).
+     */
+    public boolean proactive(GirlfriendEntity gf, String situation) {
         PlayerEntity owner = gf.getOwner();
-        if (!(owner instanceof ServerPlayerEntity sp)) return;
+        if (!(owner instanceof ServerPlayerEntity sp)) return false;
         UUID key = gf.getUuid();
-        if (pending.contains(sp.getUuid()) || !proactivePending.add(key)) return;
+        if (pending.contains(sp.getUuid()) || !proactivePending.add(key)) return false;
         MinecraftServer server = gf.getEntityWorld().getServer();
-        if (server == null) { proactivePending.remove(key); return; }
+        if (server == null) { proactivePending.remove(key); return false; }
 
         String context = buildContext(gf, sp);
         final String memory = session(sp.getUuid()).memory;
+        final UUID gfId = gf.getUuid();
         GirlfriendConfig cfg = ConfigManager.get();
         final boolean formTwo = gf.isFormTwo();
         executor.submit(() -> {
@@ -235,14 +249,16 @@ public final class ChatBrain {
                 String system = cfg.fillName(formTwo ? cfg.llm.ephemeralSystemForm2 : cfg.llm.ephemeralSystem)
                     + "\n\n[环境]\n" + context;
                 if (!memory.isBlank()) system += "\n\n[关于你和他的记忆]\n" + memory;
+                system += recentBlock(gfId);
                 system += "\n\n[此刻]\n" + situation;
                 JsonArray messages = new JsonArray();
                 messages.add(msg("system", system));
-                messages.add(msg("user", "（请你结合此刻的情境，主动、自然地说一句话）"));
+                messages.add(msg("user", cfg.llm.proactiveUserPrompt));
                 JsonObject a = llm.complete(messages, null);
-                String reply = a == null ? null : getString(a, "content");
+                String reply = normalizeProactiveLine(a == null ? null : getString(a, "content"));
                 if (reply != null && !reply.isBlank()) {
                     final String line = reply;
+                    recordSpoken(gfId, line);
                     server.execute(() -> SpeechBus.speak(gf, line));
                 }
             } catch (Exception e) {
@@ -251,10 +267,49 @@ public final class ChatBrain {
                 proactivePending.remove(key);
             }
         });
+        return true;
+    }
+
+    /** Proactive lines are always one short spoken utterance — never a chat burst. */
+    private static String normalizeProactiveLine(String reply) {
+        if (reply == null) return null;
+        reply = reply.trim();
+        int bar = reply.indexOf("||");
+        if (bar >= 0) reply = reply.substring(0, bar).trim();
+        if (reply.length() >= 2 && reply.startsWith("\"") && reply.endsWith("\"")) {
+            reply = reply.substring(1, reply.length() - 1).trim();
+        }
+        if (reply.length() >= 2 && reply.startsWith("「") && reply.endsWith("」")) {
+            reply = reply.substring(1, reply.length() - 1).trim();
+        }
+        return reply;
     }
 
     public void clearHistory(UUID id) {
         sessions.remove(id);
+    }
+
+    /** Remember a line she just said (de-duplicated, capped to the last {@link #RECENT_MAX}). */
+    private void recordSpoken(UUID gfId, String line) {
+        if (line == null || line.isBlank()) return;
+        Deque<String> q = recentLines.computeIfAbsent(gfId, k -> new ArrayDeque<>());
+        synchronized (q) {
+            q.remove(line);            // move a repeat to the back rather than keeping two copies
+            q.addLast(line);
+            while (q.size() > RECENT_MAX) q.removeFirst();
+        }
+    }
+
+    /** A "don't repeat these" block built from her recent lines, or "" if she hasn't spoken yet. */
+    private String recentBlock(UUID gfId) {
+        Deque<String> q = recentLines.get(gfId);
+        if (q == null) return "";
+        StringBuilder sb = new StringBuilder();
+        synchronized (q) {
+            if (q.isEmpty()) return "";
+            for (String l : q) sb.append("- ").append(l).append('\n');
+        }
+        return "\n\n[你最近已经说过下面这些话——这次务必换个话题、换种说法，绝不重复这些句式或用词]\n" + sb;
     }
 
     public void shutdown() {

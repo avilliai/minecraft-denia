@@ -118,8 +118,8 @@ public final class DaniyaDomain {
         playAt(SoundEvents.BLOCK_CONDUIT_DEACTIVATE, 1.0f, 0.7f);
         world.spawnParticles(ParticleTypes.PORTAL, centerVec.x, centerVec.y + 0.5, centerVec.z,
             80, radius * 0.5, 0.5, radius * 0.5, 0.3);
-        if (xyz.apollodorus.mcgf.MCGirlfriendMod.BRAIN != null && !gf.isRemoved()) {
-            xyz.apollodorus.mcgf.MCGirlfriendMod.BRAIN.proactive(gf, GirlfriendConfig.pickOne(ConfigManager.get().prompts.domainEnd));
+        if (!gf.isRemoved()) {
+            xyz.apollodorus.mcgf.ai.MoodManager.tryEventProactive(gf, GirlfriendConfig.pickOne(ConfigManager.get().prompts.domainEnd));
         }
     }
 

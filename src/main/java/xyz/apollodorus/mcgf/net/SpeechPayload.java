@@ -28,4 +28,31 @@ public record SpeechPayload(int entityId, String text, String voice) implements 
     public CustomPayload.Id<SpeechPayload> getId() {
         return ID;
     }
+
+    /**
+     * Split a reply on "||" into trimmed, non-blank segments (capped at 5, mirroring the prompt's
+     * "最多5条" rule). A line with no "||" yields a single segment (the whole text), so non-burst
+     * callers are unaffected. Shared by the server (one chat line per segment) and the client
+     * (timed bubble burst).
+     */
+    public static java.util.List<String> segments(String text) {
+        java.util.List<String> out = new java.util.ArrayList<>();
+        if (text == null) return out;
+        for (String part : text.split("\\|\\|")) {
+            String s = part.trim();
+            if (!s.isEmpty()) out.add(s);
+            if (out.size() >= 5) break;
+        }
+        if (out.isEmpty()) {
+            String s = text.trim();
+            if (!s.isEmpty()) out.add(s);
+        }
+        return out;
+    }
+
+    /** The reply with "||" separators removed, for synthesizing a single voice clip from the whole reply. */
+    public static String stripBars(String text) {
+        if (text == null) return "";
+        return text.replace("||", " ").replaceAll("\\s+", " ").trim();
+    }
 }

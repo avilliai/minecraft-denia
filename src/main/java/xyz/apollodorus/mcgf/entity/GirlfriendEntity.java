@@ -322,7 +322,7 @@ public class GirlfriendEntity extends PathAwareEntity {
      */
     private void tickDomainDeploy(ServerWorld sw, GirlfriendConfig.Behavior b) {
         if (!combatEnabled || !b.domainAutoDeploy) return;
-        if (energy < 100 || AbilityManager.hasDomain(this)) return;
+        if (energy < b.domainEnergyCost || AbilityManager.hasDomain(this)) return;
         if (!hasHostilesNear(sw, b.guardRadius)) return;
         if (AbilityManager.deployDomain(this)) {
             energy = 0;
@@ -332,9 +332,8 @@ public class GirlfriendEntity extends PathAwareEntity {
 
     /** Fire an AI-generated 切入幻灭之形 line (form-2 persona is already active by deploy time). */
     private void announceDomainEnter() {
-        if (MCGirlfriendMod.BRAIN != null) {
-            MCGirlfriendMod.BRAIN.proactive(this, GirlfriendConfig.pickOne(ConfigManager.get().prompts.domainEnter));
-        }
+        xyz.apollodorus.mcgf.ai.MoodManager.tryEventProactive(this,
+            GirlfriendConfig.pickOne(ConfigManager.get().prompts.domainEnter));
     }
 
     private boolean hasHostilesNear(ServerWorld sw, double radius) {
@@ -554,7 +553,7 @@ public class GirlfriendEntity extends PathAwareEntity {
     // --- 虚质粒子 energy (hidden combat resource) ---
 
     public int getEnergy() { return energy; }
-    public void setEnergy(int v) { this.energy = MathHelper.clamp(v, 0, 100); }
+    public void setEnergy(int v) { this.energy = MathHelper.clamp(v, 0, ConfigManager.get().behavior.domainEnergyCost); }
     public void gainEnergy(int delta) {
         // 二形态领域展开期间，不能回复能量
         if (delta > 0 && AbilityManager.hasDomain(this)) return;
@@ -896,7 +895,7 @@ public class GirlfriendEntity extends PathAwareEntity {
         combatEnabled = view.getBoolean("Combat", combatEnabled);
         gatherEnabled = view.getBoolean("Gather", gatherEnabled);
         affection = view.getInt("Affection", affection);
-        energy = MathHelper.clamp(view.getInt("Energy", 0), 0, 100);
+        energy = MathHelper.clamp(view.getInt("Energy", 0), 0, ConfigManager.get().behavior.domainEnergyCost);
         if (view.getBoolean("HasHome", false)) {
             homePos = new BlockPos(view.getInt("HomeX", 0), view.getInt("HomeY", 0), view.getInt("HomeZ", 0));
         }

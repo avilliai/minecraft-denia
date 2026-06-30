@@ -9,6 +9,10 @@ import xyz.apollodorus.mcgf.config.ConfigManager;
 import xyz.apollodorus.mcgf.config.GirlfriendConfig;
 import xyz.apollodorus.mcgf.entity.GirlfriendEntity;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,9 +30,12 @@ public final class MoodManager {
 
     private static long tick;
     private static final Map<UUID, State> STATES = new HashMap<>();
+    /** Per-pool "shuffle bag" of not-yet-used indices, so proactive topics cycle the whole pool before repeating. */
+    private static final Map<String, Deque<Integer>> BAGS = new HashMap<>();
 
     private static final class State {
         long lastSpoke = Long.MIN_VALUE / 2;
+        long lastEventSpoke = Long.MIN_VALUE / 2;   // event-triggered lines have their own (longer) cooldown
         String biome;
         boolean night;
         boolean hostiles;
@@ -46,6 +53,8 @@ public final class MoodManager {
         boolean wasInDarkPlace;
         boolean wasHighPlace;
         boolean wasUnderwater;
+        boolean ownerWasLowHealth;
+        boolean selfWasLowHealth;
     }
 
     public static void onServerTick(MinecraftServer server) {
@@ -66,21 +75,40 @@ public final class MoodManager {
 
             State s = STATES.computeIfAbsent(gf.getUuid(), k -> new State());
 
-            // 先判冷却：还在冷却里就根本不跑 detect()——否则 detect() 会就地推进基线(群系/天气/昼夜)，
-            // 把冷却期内发生的变化(尤其是路过新群系)悄悄吞掉，等冷却结束她已经「见过」了。这正是
-            // 新群系感言「消失」的主因。
-            if (tick - s.lastSpoke < minGap) continue;
-
-            String situation = detect(gf, owner, s);
-            if (situation == null) {
-                if (!ambientWindow) continue;
-                if (gf.getRandom().nextDouble() > cfg.behavior.proactiveChance) continue;
-                situation = ambient(gf);
+            // detect() runs every check so the baselines (群系/天气/昼夜/敌人) stay fresh and a change is
+            // never silently swallowed. Whether she actually SPEAKS is gated below: event lines by the long
+            // event cooldown (so combat isn't a running commentary), calm chatter by the shorter ambient gap.
+            String event = detect(gf, owner, s);
+            if (event != null) {
+                tryEventProactive(gf, event);   // gated by proactiveEventMinSeconds; stays quiet if on cooldown
+                continue;
             }
 
+            // Nothing notable → maybe a calm ambient remark, on its own (shorter) cadence.
+            // 战斗/他快没血/二形态时不碎碎念——专心打或护人，别在打架时馋蛋糕。
+            if (countHostiles(gf) > 0 || owner.getHealth() <= 6.0f || gf.isFormTwo()) continue;
+            if (tick - s.lastSpoke < minGap || !ambientWindow) continue;
+            if (gf.getRandom().nextDouble() > cfg.behavior.proactiveChance) continue;
             s.lastSpoke = tick;
-            MCGirlfriendMod.BRAIN.proactive(gf, situation);
+            MCGirlfriendMod.BRAIN.proactive(gf, ambient(gf));
         }
+    }
+
+    /**
+     * Fire an event-triggered proactive line through the shared event cooldown
+     * ({@link GirlfriendConfig.Behavior#proactiveEventMinSeconds}, ~180s). Used for monster alerts and
+     * low-HP warnings (from {@link #onServerTick}) and 蚀域 enter/exit, so combat stays a rare reaction
+     * rather than a running commentary. Returns true if she actually spoke. Server-thread only.
+     */
+    public static boolean tryEventProactive(GirlfriendEntity gf, String situation) {
+        if (situation == null || situation.isBlank() || MCGirlfriendMod.BRAIN == null) return false;
+        State s = STATES.computeIfAbsent(gf.getUuid(), k -> new State());
+        long eventGap = (long) Math.max(10, ConfigManager.get().behavior.proactiveEventMinSeconds) * 20L;
+        if (tick - s.lastEventSpoke < eventGap) return false;
+        if (!MCGirlfriendMod.BRAIN.proactive(gf, situation)) return false;
+        s.lastEventSpoke = tick;
+        s.lastSpoke = tick;   // an event line also resets the ambient gap
+        return true;
     }
 
     /** Detect the most pressing situational change, updating the baseline as it goes. */
@@ -145,8 +173,20 @@ public final class MoodManager {
         GirlfriendConfig.Prompts p = ConfigManager.get().prompts;
 
         // 优先级：玩家生命 > 自己生命 > 打雷 > 敌人出现 > 夜晚 > 新群系 > 环境变化 > 玩家行为 > 天气
-        if (owner.getHealth() <= 6.0f) return GirlfriendConfig.pickOne(p.lowHealthOwner);
-        if (gf.getHealth() <= 8.0f) return GirlfriendConfig.pickOne(p.lowHealthSelf);
+        // 低血量用边沿触发：持续低血不会每秒都想说话（之前会占满事件通道、和 CD 叠在一起仍显得吵）。
+        boolean ownerLow = owner.getHealth() <= 6.0f;
+        if (ownerLow && !s.ownerWasLowHealth) {
+            s.ownerWasLowHealth = true;
+            return GirlfriendConfig.pickOne(p.lowHealthOwner);
+        }
+        if (!ownerLow) s.ownerWasLowHealth = false;
+
+        boolean selfLow = gf.getHealth() <= 8.0f;
+        if (selfLow && !s.selfWasLowHealth) {
+            s.selfWasLowHealth = true;
+            return GirlfriendConfig.pickOne(p.lowHealthSelf);
+        }
+        if (!selfLow) s.selfWasLowHealth = false;
         if (thunderStart) return GirlfriendConfig.pickOne(p.thunderStorm);
         if (newHostiles) return GirlfriendConfig.pickOne(p.newHostiles);
         if (nightfall) return GirlfriendConfig.pickOne(p.nightfall);
@@ -162,7 +202,9 @@ public final class MoodManager {
         }
 
         // 环境变化（偶尔触发，避免过于频繁）
-        if (enteredDarkPlace && gf.getRandom().nextDouble() < 0.3) return GirlfriendConfig.pickOne(p.inDarkPlace);
+        // inDarkPlace 只在白天才报——夜晚的地表光照本来就 <7，会和 nightfall 撞车、让她短时间内反复
+        // 「天黑搭话」。白天还暗的地方=洞穴/封闭空间，这时提一句才有意义；夜晚交给 nightfall 一句就够。
+        if (enteredDarkPlace && !night && gf.getRandom().nextDouble() < 0.3) return GirlfriendConfig.pickOne(p.inDarkPlace);
         if (enteredHighPlace && gf.getRandom().nextDouble() < 0.4) return GirlfriendConfig.pickOne(p.highPlace);
         if (enteredWater && gf.getRandom().nextDouble() < 0.3) return GirlfriendConfig.pickOne(p.underwaterOrCave);
 
@@ -321,10 +363,33 @@ public final class MoodManager {
      */
     private static String ambient(GirlfriendEntity gf) {
         GirlfriendConfig.Prompts p = ConfigManager.get().prompts;
-        String base = GirlfriendConfig.pickOne(gf.isOwnerStationary() ? p.idleParked : p.idleTravel);
+        boolean parked = gf.isOwnerStationary();
+        String base = pickFresh(gf, parked ? "idleParked" : "idleTravel", parked ? p.idleParked : p.idleTravel);
         List<String> topics = p.ambientTopics;
         if (topics == null || topics.isEmpty() || gf.getRandom().nextDouble() < 0.4) return base;
-        return topics.get(gf.getRandom().nextInt(topics.size()));
+        return pickFresh(gf, "ambientTopics", topics);
+    }
+
+    /**
+     * Sample a pool without replacement: every entry is used once (in a freshly shuffled order) before
+     * any repeats. This is the main fix for "她老说同几句" — {@link GirlfriendConfig#pickOne}'s plain
+     * random can repeat a topic right away, whereas this cycles the whole {@code ambientTopics} pool
+     * first. Keyed by a stable pool id; a pool that changed size (e.g. config reload) just reshuffles.
+     * Server-thread only (called from {@link #onServerTick}), so the plain maps need no locking.
+     */
+    private static String pickFresh(GirlfriendEntity gf, String poolId, List<String> pool) {
+        if (pool == null || pool.isEmpty()) return "";
+        if (pool.size() == 1) return pool.get(0);
+        Deque<Integer> bag = BAGS.computeIfAbsent(poolId, k -> new ArrayDeque<>());
+        if (bag.isEmpty()) {
+            List<Integer> order = new ArrayList<>(pool.size());
+            for (int i = 0; i < pool.size(); i++) order.add(i);
+            for (int i = order.size() - 1; i > 0; i--) Collections.swap(order, i, gf.getRandom().nextInt(i + 1));
+            bag.addAll(order);
+        }
+        int idx = bag.pollFirst();
+        if (idx >= pool.size()) idx = gf.getRandom().nextInt(pool.size());   // pool shrank since last shuffle
+        return pool.get(idx);
     }
 
     private static int countHostiles(GirlfriendEntity gf) {

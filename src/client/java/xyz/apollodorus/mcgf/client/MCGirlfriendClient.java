@@ -61,12 +61,13 @@ public class MCGirlfriendClient implements ClientModInitializer {
 
         ClientPlayNetworking.registerGlobalReceiver(SpeechPayload.ID, (payload, context) ->
             context.client().execute(() -> {
-                SpeechBubbleManager.show(payload.entityId(), payload.text());
-                // A named cue plays the bundled 达妮娅 clip; otherwise synthesize the text via TTS.
+                SpeechBubbleManager.show(payload.entityId(), payload.text());   // renders "||" as a burst
+                // A named cue plays the bundled 达妮娅 clip; otherwise synthesize the text via TTS —
+                // one clip for the whole reply, with the "||" message separators stripped out.
                 if (payload.voice() != null && !payload.voice().isBlank()) {
                     VoiceClips.play(payload.voice());
                 } else {
-                    TtsClient.speak(payload.text());
+                    TtsClient.speak(SpeechPayload.stripBars(payload.text()));
                 }
             }));
     }

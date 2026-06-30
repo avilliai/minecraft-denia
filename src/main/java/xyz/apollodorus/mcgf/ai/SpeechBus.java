@@ -31,9 +31,14 @@ public final class SpeechBus {
         if (server == null) return;
 
         String name = ConfigManager.get().persona.displayName;
-        Text line = Text.literal("<" + name + "> " + text);
-        server.getPlayerManager().broadcast(line, false);
+        // She may reply as a burst of short messages separated by "||" — show each as its own chat line
+        // (a line without "||" is a single segment, so all other callers are unaffected).
+        for (String seg : SpeechPayload.segments(text)) {
+            server.getPlayerManager().broadcast(Text.literal("<" + name + "> " + seg), false);
+        }
 
+        // The client receives the whole reply with bars intact: it renders the bubbles as a timed
+        // burst and synthesizes ONE voice clip from the bar-stripped text, so there's no overlap.
         SpeechPayload payload = new SpeechPayload(gf.getId(), text, voiceCue == null ? "" : voiceCue);
         for (ServerPlayerEntity p : PlayerLookup.tracking(gf)) {
             ServerPlayNetworking.send(p, payload);

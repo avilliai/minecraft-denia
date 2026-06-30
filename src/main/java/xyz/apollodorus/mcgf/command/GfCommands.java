@@ -296,7 +296,7 @@ public final class GfCommands {
             + "  采集" + (gf.isGatherEnabled() ? "开" : "关")
             + "  木头" + (ConfigManager.get().behavior.autoGatherWood ? "开" : "关")
             + "  拾取" + (ConfigManager.get().behavior.autoPickup ? "开" : "关")
-            + "  能量" + gf.getEnergy() + "/100"
+            + "  能量" + gf.getEnergy() + "/" + ConfigManager.get().behavior.domainEnergyCost
             + "  正在「" + gf.getActivity() + "」";
         ctx.getSource().sendFeedback(() -> Text.literal(info), false);
         return 1;
