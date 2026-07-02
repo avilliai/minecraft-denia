@@ -94,29 +94,43 @@ public class GirlfriendEntity extends PathAwareEntity {
     private boolean combatEnabled;
     private boolean gatherEnabled;
     private BlockPos homePos;
+    private BlockPos garrisonPos;         // 驻守锚点：非 null = 被命令留守此区域，不离开 garrisonRadius，优先于跟随
 
     private final SimpleInventory inventory = new SimpleInventory(27);
     private final Map<Item, Integer> needs = new LinkedHashMap<>();
+    // 玩家明确说「不要采集」的物品（如不要铜矿）——顺手采集会跳过；玩家重新要它时自动解除。
+    private final Set<Item> gatherBlacklist = new HashSet<>();
     private final List<Task> tasks = new ArrayList<>();   // ordered job queue (active + waiting)
     private Task activeTask;                               // the job WorkGoal is currently executing, or null
     private String activity = "闲着";      // human-readable, fed into the LLM context
     private int affection;                // 好感度 0..100, used as an LLM tone reference
     private int energy;                   // 虚质粒子 0..100 (hidden); fills on attack, spends on 蚀域
+    private boolean inDefensiveCocoon;    // 防御茧期间暂停二形态悬浮、原地缩在茧里回血
 
     // owner-stationary tracking (drives idle gather / wander)
     private Vec3d lastOwnerPos;
     private int ownerStillTicks;
 
+    // 注意力机制：以「主人在一片区域逗留」而非「死站不动」为闲事触发门槛，使她不被主人走几步打断；
+    // 自主活动用 selfBusyUntil 做一个不断续期的承诺窗口，让跟随在主人仍逗留近旁时暂时让位（见 FollowOwnerGoal）。
+    private Vec3d ownerAnchor;        // 主人逗留区域的锚点
+    private long ownerAnchorTick;     // 锚点最近一次（重）设的游戏刻
+    private long selfBusyUntil;       // 自主活动每 tick 续到的承诺截止刻（瞬态，不入存档）
+    private long freeRoamUntil;       // AI 指令（go_fishing/tend_farm）放她就近自由开工的窗口（瞬态）
+
     // survival timers
     private int regenTimer;
     private int eatCooldown;
     private int gearCooldown;
+    private long lastProjectileWallTick = Long.MIN_VALUE / 2;   // 远程防御墙的内置冷却
 
     // Independent chest perception: she remarks on a noticed container regardless of what she's doing
     // (mining / chopping / following / idle). Only WALKING over to investigate (PerceiveChestGoal) waits
     // for free time — so the spoken heads-up itself is never blocked by a task. Each chest is announced
     // at most once per session.
     private final Set<BlockPos> remarkedChests = new HashSet<>();
+    // 玩家已亲自打开过的箱子：她不再感知它（既不再播报，也不再带路过去）。
+    private final Set<BlockPos> openedChests = new HashSet<>();
     private int chestScanCd;
     private long lastChestRemarkTick = Long.MIN_VALUE / 2;
 
@@ -169,10 +183,13 @@ public class GirlfriendEntity extends PathAwareEntity {
     protected void initGoals() {
         this.goalSelector.add(0, new SwimGoal(this));        // Owner-attacked emergency: outrank melee/follow/work so she breaks off and runs to him.
         this.goalSelector.add(1, new RushToOwnerGoal(this));
-        // 防御茧已移除：二形态专注输出，期间不再放置任何虚质方块（茧会把方块糊到她头上、还会卡头）。
+        // 二形态低血量防御茧：危急时把自己围进虚质里缓慢回血（10分钟一次）。高于攻击，低于冲向受击主人。
+        this.goalSelector.add(2, new xyz.apollodorus.mcgf.entity.goal.DefensiveCocoonGoal(this));
         this.goalSelector.add(3, new DaniyaAttackGoal(this));
         // 寻路信标带路：高于跟随/工作，低于战斗/冲向受击玩家——保护玩家仍最高优先级，战后自动继续前往落点。
         this.goalSelector.add(3, new xyz.apollodorus.mcgf.entity.goal.GuideToBeaconGoal(this));
+        // 驻守：被命令留守某区域时把她拉回锚点；注册在跟随之前，驻守时跟随会让位（驻守优先于跟随）。
+        this.goalSelector.add(4, new xyz.apollodorus.mcgf.entity.goal.GarrisonGoal(this));
         this.goalSelector.add(4, new FollowOwnerGoal(this));
         this.goalSelector.add(5, new PerceiveChestGoal(this));
         this.goalSelector.add(6, new WorkGoal(this));
@@ -183,9 +200,14 @@ public class GirlfriendEntity extends PathAwareEntity {
         this.goalSelector.add(7, new xyz.apollodorus.mcgf.entity.goal.AutoLightGoal(this));
         // 慵懒少女：设了 home 后空闲时会去 home 附近的床上打盹（夜晚概率高、白天也会）。高于闲逛/张望。
         this.goalSelector.add(8, new xyz.apollodorus.mcgf.entity.goal.SleepAtHomeGoal(this));
+        // 自主活动·钓鱼/打理菜地：与打盹同级（都是「主人在附近逗留时的悠闲事」），注册在打盹之后→平局时打盹优先。
+        this.goalSelector.add(8, new xyz.apollodorus.mcgf.entity.goal.FishingGoal(this));
+        this.goalSelector.add(8, new xyz.apollodorus.mcgf.entity.goal.TendFarmGoal(this));
         this.goalSelector.add(9, new WanderNearOwnerGoal(this));
         this.goalSelector.add(10, new LookAtEntityGoal(this, PlayerEntity.class, 8.0f));
         this.goalSelector.add(11, new LookAroundGoal(this));
+        // 安静发呆/赏景：最低优先级，只在别的都不想动时偶尔冒一下（配合沉默感知的「安静模式」）。
+        this.goalSelector.add(12, new xyz.apollodorus.mcgf.entity.goal.QuietIdleGoal(this));
 
         this.targetSelector.add(1, new ProtectOwnerGoal(this));
     }
@@ -230,13 +252,25 @@ public class GirlfriendEntity extends PathAwareEntity {
                 ownerStillTicks = 0;
             }
             lastOwnerPos = p;
+
+            // 逗留锚点：主人离锚点超过 idleRoamRadius 就重置（说明他在转移阵地），否则锚点稳定。
+            // isOwnerLoitering() 据锚点稳定时长判断——主人在一片区域里走走停停，仍算「在附近逗留」，
+            // 她就不会被几步移动从「自己的事」上拽走。
+            double roam = b.idleRoamRadius;
+            if (ownerAnchor == null || p.squaredDistanceTo(ownerAnchor) > roam * roam) {
+                ownerAnchor = p;
+                ownerAnchorTick = sw.getTime();
+            }
+        } else {
+            ownerAnchor = null;   // 主人离线/不在 → 清掉，免得旧锚点被当成「在逗留」
         }
 
         if (--gearCooldown <= 0) {
             gearCooldown = 40;
             gearUp();
-            // 形态一时握着专武泡泡杖（出生即附带）：空手且没在挖矿/战斗时自动握上。
-            if (!isFormTwo() && getTarget() == null && getTask() == null
+            // 形态一时握着专武泡泡杖（出生即附带）：空手且没在挖矿/战斗/做自己的事时自动握上。
+            // 加 !isSelfBusy() 门：钓鱼等自主活动握着别的道具（如鱼竿）时不抢着换杖。
+            if (!isFormTwo() && !isSelfBusy() && getTarget() == null && getTask() == null
                     && getEquippedStack(EquipmentSlot.MAINHAND).isEmpty()) {
                 equipSignatureWeapon();
             }
@@ -294,7 +328,7 @@ public class GirlfriendEntity extends PathAwareEntity {
      * 所以领域结束的瞬间也不会摔伤（再叠加 end() 给的缓降）。
      */
     private void tickFloat() {
-        if (!isFormTwo()) return;
+        if (!isFormTwo() || inDefensiveCocoon) return;   // 围茧时不悬浮，原地缩在茧里
         World w = getEntityWorld();
         BlockPos base = getBlockPos();
         double groundTop = Double.NaN;
@@ -323,22 +357,35 @@ public class GirlfriendEntity extends PathAwareEntity {
     private void tickDomainDeploy(ServerWorld sw, GirlfriendConfig.Behavior b) {
         if (!combatEnabled || !b.domainAutoDeploy) return;
         if (energy < b.domainEnergyCost || AbilityManager.hasDomain(this)) return;
-        if (!hasHostilesNear(sw, b.guardRadius)) return;
+        if (!shouldAutoDeploy(sw, b)) return;
         if (AbilityManager.deployDomain(this)) {
             energy = 0;
             announceDomainEnter();
         }
     }
 
+    /**
+     * 蚀域不再「能量一满就开」——1形态是常态。即便能量满了，也只在局面真的吃紧时才认真起来：附近 10 格内
+     * 怪够多（&ge; {@code domainMinHostiles}，默认至少 4 只）、或有强怪（最大生命 &gt; {@code domainStrongHostileHealth}，
+     * 如铁傀儡/劫掠兽/凋灵）、或玩家/她自己状态不好。手动 /denia ult（{@link #tryDeployDomain}）不受此限。
+     */
+    private boolean shouldAutoDeploy(ServerWorld sw, GirlfriendConfig.Behavior b) {
+        List<Entity> hostiles = sw.getOtherEntities(this, getBoundingBox().expand(10.0),
+            e -> e instanceof HostileEntity && e.isAlive());
+        if (hostiles.isEmpty()) return false;                       // 没怪绝不开
+        if (hostiles.size() >= b.domainMinHostiles) return true;    // 怪够多（至少 4 只）
+        for (Entity e : hostiles) {                                 // 有强怪（血量高于 24）
+            if (e instanceof LivingEntity le && le.getMaxHealth() > b.domainStrongHostileHealth) return true;
+        }
+        PlayerEntity owner = getOwner();
+        if (owner != null && owner.getHealth() <= 8.0f) return true;   // 玩家状态不好
+        return getHealth() <= getMaxHealth() * 0.4f;                    // 她自己状态不好
+    }
+
     /** Fire an AI-generated 切入幻灭之形 line (form-2 persona is already active by deploy time). */
     private void announceDomainEnter() {
         xyz.apollodorus.mcgf.ai.MoodManager.tryEventProactive(this,
             GirlfriendConfig.pickOne(ConfigManager.get().prompts.domainEnter));
-    }
-
-    private boolean hasHostilesNear(ServerWorld sw, double radius) {
-        Box box = getBoundingBox().expand(radius);
-        return !sw.getOtherEntities(this, box, e -> e instanceof HostileEntity && e.isAlive()).isEmpty();
     }
 
     /** Manually unleash the domain (e.g. /gf ult). Returns true if it deployed. */
@@ -352,7 +399,8 @@ public class GirlfriendEntity extends PathAwareEntity {
         return false;
     }
 
-    private static final int CHEST_REMARK_GAP = 200; // ~10s minimum between chest remarks
+    private static final int CHEST_REMARK_GAP = 600; // ~30s minimum between chest remarks (was 10s: too chatty in ruins)
+    private static final int CHEST_CLUSTER_RADIUS = 10; // 播报一个箱子后，这半径内成片的箱子一并噤声（遗迹箱子成堆时别逐个念）
     private static final Predicate<BlockState> IS_CONTAINER =
         st -> st.isOf(Blocks.CHEST) || st.isOf(Blocks.TRAPPED_CHEST) || st.isOf(Blocks.BARREL);
 
@@ -382,6 +430,7 @@ public class GirlfriendEntity extends PathAwareEntity {
         if (home != null && home.getSquaredDistance(found) <= hr2) return;
 
         remarkedChests.add(found.toImmutable());           // once per chest position (no expiry this session)
+        suppressChestCluster(sw, found);                   // 连同附近成片的箱子一起噤声，别在遗迹里逐个念
         lastChestRemarkTick = now;
         // ~50% her own 达妮娅 perceive clip; otherwise (and for any other persona) an AI line.
         if (!xyz.apollodorus.mcgf.ai.Voice.maybePerceive(this) && MCGirlfriendMod.BRAIN != null) {
@@ -389,8 +438,35 @@ public class GirlfriendEntity extends PathAwareEntity {
         }
     }
 
-    private void enforceAttribute(RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> attr, double want) {
-        EntityAttributeInstance inst = getAttributeInstance(attr);
+    /**
+     * 播报一个箱子后，把它周围 {@link #CHEST_CLUSTER_RADIUS} 内成片的其它容器一并记为「已播报」——遗迹/沉船/矿道里
+     * 箱子常常成堆，否则她会每隔十来秒就念叨一个新箱子，很吵。整片箱子只提示一次（只影响语音，带路探查的
+     * {@link PerceiveChestGoal} 仍会各自安静地去看）。只在真的播报了才扫，成本可忽略。
+     */
+    private void suppressChestCluster(ServerWorld sw, BlockPos center) {
+        int r = CHEST_CLUSTER_RADIUS;
+        int ry = Math.min(r, 5);   // 箱子基本同层，纵向收窄
+        for (BlockPos p : BlockPos.iterate(
+                center.getX() - r, center.getY() - ry, center.getZ() - r,
+                center.getX() + r, center.getY() + ry, center.getZ() + r)) {
+            if (IS_CONTAINER.test(sw.getBlockState(p))) remarkedChests.add(p.toImmutable());
+        }
+    }
+
+    /** 玩家亲自打开了某个箱子 → 她不再感知它：既加入「已播报」集（不再提），也加入「已打开」集（不再带路过去）。 */
+    public void ignoreChest(BlockPos pos) {
+        if (pos == null) return;
+        BlockPos p = pos.toImmutable();
+        openedChests.add(p);
+        remarkedChests.add(p);
+    }
+
+    /** True once the player has opened this chest — perception goals skip it (see {@link PerceiveChestGoal}). */
+    public boolean isChestIgnored(BlockPos pos) {
+        return openedChests.contains(pos);
+    }
+
+    private void enforceAttribute(RegistryEntry<net.minecraft.entity.attribute.EntityAttribute> attr, double want) {        EntityAttributeInstance inst = getAttributeInstance(attr);
         if (inst != null && Math.abs(inst.getBaseValue() - want) > 1.0e-4) inst.setBaseValue(want);
     }
 
@@ -461,6 +537,63 @@ public class GirlfriendEntity extends PathAwareEntity {
 
     public boolean isLowHealth() {
         return getHealth() <= getMaxHealth() * ConfigManager.get().behavior.selfPreserveBelowPercent;
+    }
+
+    @Override
+    public boolean damage(ServerWorld world, DamageSource source, float amount) {
+        boolean applied = super.damage(world, source, amount);
+        // 受到远程攻击（箭/三叉戟等投掷物）时，一形态会在攻击来源方向竖起一道虚质墙挡投掷物（二形态手短、不触发）。
+        if (applied && !isFormTwo()) maybeRaiseProjectileWall(world, source);
+        return applied;
+    }
+
+    /**
+     * 远程防御：被投掷物击中时，在朝攻击来源方向约 3 格处竖起一道 3 宽×2 高的虚质墙挡后续投掷物。只在空气/可替换处
+     * 放置（不毁地形/建筑），方块约 6 秒后自动消失。内置冷却 {@code projectileWallCooldownSeconds}（默认 120 秒）。
+     */
+    private void maybeRaiseProjectileWall(ServerWorld world, DamageSource source) {
+        GirlfriendConfig.Behavior b = ConfigManager.get().behavior;
+        if (!b.projectileWallEnabled) return;
+        if (!(source.getSource() instanceof net.minecraft.entity.projectile.ProjectileEntity proj)) return;
+        long cd = (long) Math.max(1, b.projectileWallCooldownSeconds) * 20L;
+        if (world.getTime() - lastProjectileWallTick < cd) return;
+
+        // 来袭方向：优先用射手位置；没有（如发射器）就用投掷物反向速度推算来处。
+        Entity attacker = source.getAttacker();
+        Vec3d from;
+        if (attacker != null && attacker != this) {
+            from = attacker.getEntityPos();
+        } else {
+            Vec3d v = proj.getVelocity();
+            if (v.lengthSquared() < 1.0e-4) return;
+            from = getEntityPos().subtract(v.normalize().multiply(5.0));
+        }
+        double dx = from.x - getX();
+        double dz = from.z - getZ();
+        net.minecraft.util.math.Direction toward = Math.abs(dx) >= Math.abs(dz)
+            ? (dx >= 0 ? net.minecraft.util.math.Direction.EAST : net.minecraft.util.math.Direction.WEST)
+            : (dz >= 0 ? net.minecraft.util.math.Direction.SOUTH : net.minecraft.util.math.Direction.NORTH);
+        net.minecraft.util.math.Direction perp = toward.rotateYClockwise();
+
+        BlockPos base = getBlockPos().offset(toward, 3);   // 离她约 3 格、朝来源方向
+        long expiry = world.getTime() + cd;                // 持续整个冷却（默认 120 秒）后自动消失
+        int placed = 0;
+        for (int side = -1; side <= 1; side++) {           // 3 宽（沿垂直于来袭方向）
+            BlockPos col = base.offset(perp, side);
+            for (int h = 0; h <= 1; h++) {                 // 2 高
+                BlockPos pos = col.up(h);
+                BlockState st = world.getBlockState(pos);
+                if (st.isAir() || st.isReplaceable()) {    // 只在空处竖墙，不替换地形/玩家建筑
+                    AbilityManager.blocks().place(world, pos, expiry, null);
+                    placed++;
+                }
+            }
+        }
+        if (placed > 0) {
+            lastProjectileWallTick = world.getTime();
+            world.spawnParticles(net.minecraft.particle.ParticleTypes.PORTAL,
+                base.getX() + 0.5, base.getY() + 1.0, base.getZ() + 0.5, 20, 0.6, 0.6, 0.6, 0.05);
+        }
     }
 
     @Override
@@ -564,6 +697,10 @@ public class GirlfriendEntity extends PathAwareEntity {
 
     public boolean isFormTwo() { return this.getDataTracker().get(FORM_TWO); }
     public void setFormTwo(boolean v) { this.getDataTracker().set(FORM_TWO, v); }
+
+    /** True while the form-2 defensive cocoon is active — suppresses the hover float so she sits enclosed. */
+    public boolean isInDefensiveCocoon() { return inDefensiveCocoon; }
+    public void setInDefensiveCocoon(boolean v) { this.inDefensiveCocoon = v; }
 
     /** 形态一：把专武「泡泡杖」握到主手（若她竟然没有就凭空给一把——出生即附带）。 */
     public void equipSignatureWeapon() {
@@ -708,6 +845,15 @@ public class GirlfriendEntity extends PathAwareEntity {
     public BlockPos getHomePos() { return homePos; }
     public void setHomePos(BlockPos pos) { this.homePos = pos; }
 
+    // --- 驻守（留守某区域，优先于跟随）---
+
+    public BlockPos getGarrisonPos() { return garrisonPos; }
+    public boolean isGarrisoned() { return garrisonPos != null; }
+    /** Tell her to hold an area (she won't leave {@code garrisonRadius} of {@code pos}); overrides follow. */
+    public void setGarrison(BlockPos pos) { this.garrisonPos = pos == null ? null : pos.toImmutable(); }
+    /** Release the garrison (follow / come / capture / release all do this). */
+    public void clearGarrison() { this.garrisonPos = null; }
+
     // --- 睡眠状态 ---
 
     /**
@@ -756,15 +902,38 @@ public class GirlfriendEntity extends PathAwareEntity {
     public boolean isOwnerStationary() { return ownerStillTicks > 40; }
 
     /**
-     * Distance at which {@link FollowOwnerGoal} starts pulling her back. While the owner is parked
-     * she's let off the leash out to {@code idleRoamRadius}, so her probabilistic idle wandering /
-     * foraging isn't yanked back the instant she strays past {@code followStartDistance} — that
+     * 注意力机制核心：主人在一片区域（idleRoamRadius 内）逗留 ~1.5s 以上即视为「在附近逗留」。比
+     * {@link #isOwnerStationary()}（死站不动）宽松——主人走走停停地挖矿/搭建时仍成立，所以她能安心做
+     * 自己的事而不被几步移动打断。空闲活动（钓鱼/种田/顺手采集/闲逛/发呆）都以它为触发门槛；只有打盹
+     * 仍用更严格的 {@link #isOwnerStationary()}。
+     */
+    public boolean isOwnerLoitering() {
+        if (ownerAnchor == null) return false;
+        return getEntityWorld().getTime() - ownerAnchorTick > 30L;   // 锚点稳定 ~1.5s
+    }
+
+    /** 自主活动每 tick 续一小段承诺窗口，使跟随在主人仍逗留近旁时暂时让位；窗口有界，活动停后数秒自动失效。 */
+    public void markSelfBusy(int ticks) {
+        long until = getEntityWorld().getTime() + ticks;
+        if (until > selfBusyUntil) selfBusyUntil = until;
+    }
+    public boolean isSelfBusy() { return getEntityWorld().getTime() < selfBusyUntil; }
+    public void clearSelfBusy() { selfBusyUntil = 0L; }
+
+    /** AI 指令（go_fishing/tend_farm）开的「就近自由开工」窗口：让对应 Goal 绕过「主人逗留」门槛立刻开始。 */
+    public void setFreeRoam(int ticks) { this.freeRoamUntil = getEntityWorld().getTime() + ticks; }
+    public boolean isFreeRoam() { return getEntityWorld().getTime() < freeRoamUntil; }
+
+    /**
+     * Distance at which {@link FollowOwnerGoal} starts pulling her back. While the owner is loitering
+     * nearby she's let off the leash out to {@code idleRoamRadius}, so her probabilistic idle wandering /
+     * foraging / 自己的事 isn't yanked back the instant she strays past {@code followStartDistance} — that
      * constant cross-the-line/get-pulled-back was the old "pacing back and forth". The moment the
-     * owner moves again, isOwnerStationary() flips false and normal follow distance resumes.
+     * owner stops loitering (covers ground), isOwnerLoitering() flips false and normal follow resumes.
      */
     public double effectiveFollowStartDistance() {
         GirlfriendConfig.Behavior b = ConfigManager.get().behavior;
-        if (isFollowing() && isOwnerStationary()) return Math.max(b.followStartDistance, b.idleRoamRadius);
+        if (isFollowing() && isOwnerLoitering()) return Math.max(b.followStartDistance, b.idleRoamRadius);
         return b.followStartDistance;
     }
 
@@ -778,6 +947,14 @@ public class GirlfriendEntity extends PathAwareEntity {
         if (item == null || count <= 0) return;
         needs.merge(item, count, Integer::sum);
     }
+
+    // --- 采集黑名单（玩家说「不要采集这个」）---
+
+    public Set<Item> getGatherBlacklist() { return gatherBlacklist; }
+    public boolean isGatherBlacklisted(Item item) { return item != null && gatherBlacklist.contains(item); }
+    public void addGatherBlacklist(Item item) { if (item != null) gatherBlacklist.add(item); }
+    /** Remove an item from the gather blacklist (e.g. the player now wants it). Returns true if it was on it. */
+    public boolean removeGatherBlacklist(Item item) { return item != null && gatherBlacklist.remove(item); }
 
     /** Reduce outstanding needs after collecting items. Returns true if one was just satisfied. */
     public boolean noteCollected(Item item, int count) {
@@ -880,8 +1057,15 @@ public class GirlfriendEntity extends PathAwareEntity {
             view.putInt("HomeY", homePos.getY());
             view.putInt("HomeZ", homePos.getZ());
         }
+        if (garrisonPos != null) {
+            view.putBoolean("HasGarrison", true);
+            view.putInt("GarrisonX", garrisonPos.getX());
+            view.putInt("GarrisonY", garrisonPos.getY());
+            view.putInt("GarrisonZ", garrisonPos.getZ());
+        }
         view.putString("Inv", serializeInventory());
         view.putString("Needs", serializeNeeds());
+        view.putString("GatherBlacklist", serializeBlacklist());
         view.putString("Tasks", serializeTasks());
     }
 
@@ -899,8 +1083,12 @@ public class GirlfriendEntity extends PathAwareEntity {
         if (view.getBoolean("HasHome", false)) {
             homePos = new BlockPos(view.getInt("HomeX", 0), view.getInt("HomeY", 0), view.getInt("HomeZ", 0));
         }
+        if (view.getBoolean("HasGarrison", false)) {
+            garrisonPos = new BlockPos(view.getInt("GarrisonX", 0), view.getInt("GarrisonY", 0), view.getInt("GarrisonZ", 0));
+        }
         view.getOptionalString("Inv").ifPresent(this::deserializeInventory);
         view.getOptionalString("Needs").ifPresent(this::deserializeNeeds);
+        view.getOptionalString("GatherBlacklist").ifPresent(this::deserializeBlacklist);
         view.getOptionalString("Tasks").ifPresent(this::deserializeTasks);
     }
 
@@ -953,6 +1141,26 @@ public class GirlfriendEntity extends PathAwareEntity {
             if (item == Items.AIR) continue;
             try { needs.put(item, Integer.parseInt(kv[1])); }
             catch (NumberFormatException ignored) {}
+        }
+    }
+
+    private String serializeBlacklist() {
+        StringBuilder sb = new StringBuilder();
+        for (Item it : gatherBlacklist) {
+            if (sb.length() > 0) sb.append(';');
+            sb.append(Registries.ITEM.getId(it));
+        }
+        return sb.toString();
+    }
+
+    private void deserializeBlacklist(String data) {
+        gatherBlacklist.clear();
+        if (data == null || data.isBlank()) return;
+        for (String part : data.split(";")) {
+            String s = part.trim();
+            if (s.isEmpty()) continue;
+            Item item = Registries.ITEM.get(Identifier.tryParse(s));
+            if (item != Items.AIR) gatherBlacklist.add(item);
         }
     }
 

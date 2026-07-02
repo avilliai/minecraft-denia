@@ -6,6 +6,7 @@ import net.minecraft.entity.ai.goal.Goal;
 import net.minecraft.entity.ai.pathing.Path;
 import net.minecraft.entity.mob.HostileEntity;
 import net.minecraft.entity.player.PlayerEntity;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Box;
 import xyz.apollodorus.mcgf.config.ConfigManager;
 import xyz.apollodorus.mcgf.config.GirlfriendConfig;
@@ -135,8 +136,7 @@ public class ProtectOwnerGoal extends Goal {
 
     /** Nearest hostile she can honestly engage (see + reach/range), scanned around owner-or-self. */
     private LivingEntity nearestEngageable(GirlfriendConfig.Behavior b) {
-        Entity anchor = gf.getOwner() != null ? gf.getOwner() : gf;
-        Box box = anchor.getBoundingBox().expand(b.guardRadius);
+        Box box = scanBox(b.guardRadius);
         LivingEntity best = null;
         double bestSq = Double.MAX_VALUE;
         for (Entity e : gf.getEntityWorld().getOtherEntities(gf, box,
@@ -167,8 +167,8 @@ public class ProtectOwnerGoal extends Goal {
         boolean defensiveOnly = gf.isLowHealth();
 
         // Search around whichever anchor exists; prefer mobs close to girlfriend herself (for better kiting).
-        Entity anchor = owner != null ? owner : gf;
-        Box box = anchor.getBoundingBox().expand(r);
+        // 驻守时改为以驻守锚点为中心扫描，且只打半径内的怪——她守的是这片区域，不追远。
+        Box box = scanBox(r);
         List<Entity> nearby = gf.getEntityWorld().getOtherEntities(gf, box,
             e -> e instanceof HostileEntity && e.isAlive());
 
@@ -195,6 +195,7 @@ public class ProtectOwnerGoal extends Goal {
      */
     private boolean canEngage(LivingEntity e, GirlfriendConfig.Behavior b) {
         if (e == recentlyDropped && gf.getEntityWorld().getTime() < dropCooldownUntil) return false;
+        if (!withinGarrison(e)) return false;   // 驻守时不打区域外的怪
         if (b.combatRequireLineOfSight && !gf.canSee(e)) return false;
         if (b.combatRequireReachable) {
             Path path = gf.getNavigation().findPathTo(e, 0);
@@ -208,5 +209,24 @@ public class ProtectOwnerGoal extends Goal {
             }
         }
         return true;
+    }
+
+    /** Scan box centered on the garrison post (when garrisoned) or on owner-or-self otherwise. */
+    private Box scanBox(double r) {
+        if (gf.isGarrisoned() && gf.getGarrisonPos() != null) {
+            double gr = Math.min(r, Math.max(2.0, ConfigManager.get().behavior.garrisonRadius));
+            return new Box(gf.getGarrisonPos()).expand(gr);
+        }
+        Entity anchor = gf.getOwner() != null ? gf.getOwner() : gf;
+        return anchor.getBoundingBox().expand(r);
+    }
+
+    /** When garrisoned, ignore mobs outside the garrison radius so she never chases far from her post. */
+    private boolean withinGarrison(Entity e) {
+        if (!gf.isGarrisoned()) return true;
+        BlockPos g = gf.getGarrisonPos();
+        if (g == null) return true;
+        double r = Math.max(2.0, ConfigManager.get().behavior.garrisonRadius);
+        return e.getBlockPos().getSquaredDistance(g) <= r * r;
     }
 }

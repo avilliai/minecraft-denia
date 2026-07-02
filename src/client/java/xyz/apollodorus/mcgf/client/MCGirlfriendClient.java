@@ -5,6 +5,7 @@ import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.rendering.v1.EntityModelLayerRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.texture.NativeImage;
 import net.minecraft.client.texture.NativeImageBackedTexture;
 import net.minecraft.util.Identifier;
@@ -14,10 +15,12 @@ import xyz.apollodorus.mcgf.MCGirlfriendMod;
 import xyz.apollodorus.mcgf.client.render.GirlfriendEntityModel;
 import xyz.apollodorus.mcgf.client.render.GirlfriendEntityRenderer;
 import xyz.apollodorus.mcgf.client.render.ModEntityModelLayers;
+import xyz.apollodorus.mcgf.client.tts.ClipSounds;
 import xyz.apollodorus.mcgf.client.tts.TtsClient;
 import xyz.apollodorus.mcgf.client.tts.VoiceClips;
 import xyz.apollodorus.mcgf.config.ConfigManager;
 import xyz.apollodorus.mcgf.entity.GirlfriendEntities;
+import xyz.apollodorus.mcgf.net.ClipSoundPayload;
 import xyz.apollodorus.mcgf.net.SpeechPayload;
 
 import java.io.InputStream;
@@ -70,6 +73,29 @@ public class MCGirlfriendClient implements ClientModInitializer {
                     TtsClient.speak(SpeechPayload.stripBars(payload.text()));
                 }
             }));
+
+        // 达妮娅的形态一连招音效（自带 wav，走 mod 自己的音频通道）：按声源到玩家的距离衰减音量、按方位左右声像，
+        // 让 3a/4a 听起来是从"目标那边"传来的。
+        ClientPlayNetworking.registerGlobalReceiver(ClipSoundPayload.ID, (payload, context) ->
+            context.client().execute(() -> {
+                ClientPlayerEntity p = context.client().player;
+                if (p == null) return;
+                double dx = payload.x() - p.getX();
+                double dy = payload.y() - p.getEyeY();
+                double dz = payload.z() - p.getZ();
+                double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+                float gain = (float) Math.max(0.12, 1.0 - dist / 24.0);   // 24 格外基本听不到
+                ClipSounds.play(payload.clip(), gain * payload.volume(), pan(p.getYaw(), dx, dz));
+            }));
+    }
+
+    /** Stereo pan (-1 left .. +1 right) of a source direction relative to where the player is facing. */
+    private static float pan(float yawDeg, double dx, double dz) {
+        double horiz = Math.sqrt(dx * dx + dz * dz);
+        if (horiz < 0.01) return 0f;
+        double yaw = Math.toRadians(yawDeg);
+        double rx = Math.cos(yaw), rz = Math.sin(yaw);   // player's right vector in world XZ
+        return (float) Math.max(-1.0, Math.min(1.0, (dx * rx + dz * rz) / horiz));
     }
 
     /**

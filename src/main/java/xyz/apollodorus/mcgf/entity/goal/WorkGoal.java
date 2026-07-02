@@ -84,6 +84,15 @@ public class WorkGoal extends Goal {
         Map.entry(Items.BEETROOT, Set.of(Blocks.BEETROOTS))
     );
 
+    /** Reverse of {@link #ORE_SOURCES}: source block → the item it yields, used to honor the gather blacklist. */
+    private static final Map<Block, Item> BLOCK_ITEM = buildBlockItem();
+    private static Map<Block, Item> buildBlockItem() {
+        Map<Block, Item> m = new HashMap<>();
+        for (Map.Entry<Item, Set<Block>> e : ORE_SOURCES.entrySet())
+            for (Block b : e.getValue()) m.put(b, e.getKey());
+        return m;
+    }
+
     public WorkGoal(GirlfriendEntity gf) {
         this.gf = gf;
         this.setControls(EnumSet.of(Control.MOVE, Control.LOOK));
@@ -249,7 +258,9 @@ public class WorkGoal extends Goal {
     private boolean idleGatherAllowed() {
         GirlfriendConfig.Behavior b = ConfigManager.get().behavior;
         if (!gf.isGatherEnabled() || !b.autoIdleGather) return false;
-        return !gf.isFollowing() || gf.isOwnerStationary();
+        // 用 isOwnerLoitering()（主人在一片区域逗留）而非 isOwnerStationary()（死站），与钓鱼/种田等自主活动
+        // 口径一致——主人走走停停地忙时她也能顺手采集，不被几步移动打断。
+        return !gf.isFollowing() || gf.isOwnerLoitering();
     }
 
     /** Lock the first queued job that currently has a reachable target as the active one. */
@@ -293,7 +304,20 @@ public class WorkGoal extends Goal {
         boolean pick = WorkUtil.hasTool(gf, WorkUtil.ToolKind.PICKAXE);
         boolean wood = ConfigManager.get().behavior.autoGatherWood;
         boolean crops = ConfigManager.get().behavior.autoGatherCrops;
-        return st -> (pick && WorkUtil.isOre(st)) || (wood && WorkUtil.isLog(st)) || (crops && WorkUtil.isMatureCrop(st));
+        return st -> !isBlacklistedBlock(st)
+            && ((pick && WorkUtil.isOre(st)) || (wood && WorkUtil.isLog(st)) || (crops && WorkUtil.isMatureCrop(st)));
+    }
+
+    /** Map a candidate block to the item it yields and check the gf's gather blacklist (e.g. "别采铜矿了"). */
+    private boolean isBlacklistedBlock(BlockState st) {
+        if (gf.getGatherBlacklist().isEmpty()) return false;
+        Block block = st.getBlock();
+        Item item = BLOCK_ITEM.get(block);
+        if (item == null) {
+            item = block.asItem();
+            if (item == Items.AIR) return false;
+        }
+        return gf.isGatherBlacklisted(item);
     }
 
     private static Predicate<BlockState> predicateForTask(Task t) {

@@ -109,7 +109,7 @@ public class SleepAtHomeGoal extends Goal {
         if (--repathCd <= 0) {
             repathCd = 12;
             gf.getNavigation().startMovingTo(center.x, center.y, center.z,
-                ConfigManager.get().behavior.moveSpeed * 0.6);
+                ConfigManager.get().behavior.moveSpeed * 0.9);   // 0.9 才有正常迈腿动画（太慢会"太空步"）
         }
     }
 

@@ -53,7 +53,7 @@ public final class ConfigManager {
      * (its llm / tts / behavior settings are kept), then is re-stamped to this version. That's what
      * lets edits to the prompt defaults reach an existing mcgf.json without the user deleting it.
      */
-    public static final int CURRENT_CONFIG_VERSION = 4;
+    public static final int CURRENT_CONFIG_VERSION = 7;
 
     private ConfigManager() {}
 

@@ -5,8 +5,10 @@ import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
+import net.minecraft.util.math.Vec3d;
 import xyz.apollodorus.mcgf.config.ConfigManager;
 import xyz.apollodorus.mcgf.entity.GirlfriendEntity;
+import xyz.apollodorus.mcgf.net.ClipSoundPayload;
 import xyz.apollodorus.mcgf.net.SpeechPayload;
 
 /**
@@ -46,6 +48,23 @@ public final class SpeechBus {
         // Make sure the owner hears her even if just outside tracking range.
         if (gf.getOwner() instanceof ServerPlayerEntity owner
             && !PlayerLookup.tracking(gf).contains(owner)) {
+            ServerPlayNetworking.send(owner, payload);
+        }
+    }
+
+    /**
+     * Play a bundled WAV clip ({@code assets/mcgf/sounds/<clip>.wav}) positioned at {@code at} for every
+     * player near the gf — her custom 形态一 combo sounds, attenuated/panned client-side. Server-thread only.
+     */
+    public static void playClip(GirlfriendEntity gf, String clip, Vec3d at, float volume) {
+        if (clip == null || clip.isBlank() || at == null) return;
+        MinecraftServer server = gf.getEntityWorld().getServer();
+        if (server == null) return;
+        ClipSoundPayload payload = new ClipSoundPayload(clip, at.x, at.y, at.z, volume);
+        for (ServerPlayerEntity p : PlayerLookup.tracking(gf)) {
+            ServerPlayNetworking.send(p, payload);
+        }
+        if (gf.getOwner() instanceof ServerPlayerEntity owner && !PlayerLookup.tracking(gf).contains(owner)) {
             ServerPlayNetworking.send(owner, payload);
         }
     }

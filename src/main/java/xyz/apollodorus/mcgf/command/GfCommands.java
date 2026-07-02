@@ -35,6 +35,7 @@ public final class GfCommands {
                     .then(CommandManager.literal("reload").executes(GfCommands::reload))
                     .then(CommandManager.literal("harvest").executes(ctx -> setTask(ctx, Task.harvest(), "去收庄稼啦~")))
                     .then(CommandManager.literal("home").executes(GfCommands::home))
+                    .then(CommandManager.literal("garrison").executes(GfCommands::garrison))
                     .then(CommandManager.literal("revive").executes(GfCommands::revive))
                     .then(CommandManager.literal("status").executes(GfCommands::status))
                     .then(CommandManager.literal("debug").executes(GfCommands::debug))
@@ -171,6 +172,17 @@ public final class GfCommands {
         if (gf == null) return 0;
         gf.setHomePos(gf.getBlockPos());
         ctx.getSource().sendFeedback(() -> Text.literal("已把这里记为家。"), false);
+        return 1;
+    }
+
+    private static int garrison(CommandContext<ServerCommandSource> ctx) {
+        GirlfriendEntity gf = require(ctx);
+        if (gf == null) return 0;
+        gf.setGarrison(gf.getBlockPos());
+        gf.setFollowing(false);
+        gf.getNavigation().stop();
+        int r = (int) ConfigManager.get().behavior.garrisonRadius;
+        ctx.getSource().sendFeedback(() -> Text.literal("达妮娅开始驻守这一带（约 " + r + " 格内，让她跟上/过来即解除）。"), false);
         return 1;
     }
 
@@ -342,6 +354,7 @@ public final class GfCommands {
         if (player != null) gf.setOwnerUuid(player.getUuid());
         gf.setFollowing(follow);
         gf.clearTask();
+        gf.clearGarrison();   // 跟上/过来 → 自动解除驻守
         ctx.getSource().sendFeedback(() -> Text.translatable(feedbackKey), false);
         return 1;
     }

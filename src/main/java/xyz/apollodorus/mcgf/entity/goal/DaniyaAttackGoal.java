@@ -41,6 +41,9 @@ public class DaniyaAttackGoal extends Goal {
     private int strafeFlipCd;
     private int strafeDir = 1;
     private int idleAttackTicks;   // watchdog: ticks since she last landed an attack (fixes form-2 "freeze")
+    private boolean fleeing;       // 形态一风筝状态：true=正在逃开拉距离（背对着跑、不打），false=已拉开、停下面敌开火
+    private int fleeTicks;         // 连续逃跑的 tick 数（没拉开就一直涨）——用来判断「跑不过/没空间」
+    private long standFightUntil;  // 逃不掉时停下站桩还击到这个游戏刻为止
 
     public DaniyaAttackGoal(GirlfriendEntity gf) {
         this.gf = gf;
@@ -70,6 +73,9 @@ public class DaniyaAttackGoal extends Goal {
         this.comboStep = 0;
         this.strafeCd = 0;
         this.strafeFlipCd = 4;
+        this.fleeing = false;
+        this.fleeTicks = 0;
+        this.standFightUntil = 0;
         this.lastFormTwo = gf.isFormTwo();
         equipForForm(lastFormTwo);
     }
@@ -107,87 +113,36 @@ public class DaniyaAttackGoal extends Goal {
         double dist = gf.distanceTo(target);
         boolean canSee = gf.canSee(target);
 
-        // 形态一多敌人策略：保持距离，边退边打，利用远程泡泡攻击。
-        // 也包含「近处有怪贴脸」的情况——哪怕只有 1~2 只，只要有怪进了近战距离就拉开，别站着被打死。
-        boolean meleeThreat = !formTwo && nearestHostileSq() < 4.5 * 4.5;
-        boolean shouldKite = !formTwo && dist < maxRange && (nearbyHostiles >= 3 || meleeThreat);
-
-        // 形态二：先靠近敌人再打——离得远 OR 看不见（被挡）就径直贴近，到位后才环绕走位。
-        // 形态一：稳住别多动症，进入合适距离就停下原地输出，只偶尔挪一小步。
-        // 风筝模式：持续移动，保持距离，避免被包围
-        double moveSpeed = b.moveSpeed * (formTwo ? 1.35 : (shouldKite ? 1.2 : 1.0));
-        double band = formTwo ? 1.0 : (shouldKite ? 3.0 : 2.2); // 风筝时容忍更宽的距离带
-        boolean mustApproach = dist > preferred + band || (formTwo && !canSee && dist > preferred);
-
-        if (shouldKite) {
-            // 风筝模式：始终保持移动，优先后退拉开距离
-            if (dist < preferred) {
-                // 距离太近，后退
-                if (--repathCd <= 0) {
-                    repathCd = 8;
-                    backAwayFrom(target, moveSpeed, preferred);
-                }
-            } else if (dist > preferred + band * 1.5) {
-                // 距离太远，稍微靠近一点
-                if (--repathCd <= 0) {
-                    repathCd = 12;
-                    gf.getNavigation().startMovingTo(target, moveSpeed * 0.8);
-                }
-            } else {
-                // 合适距离，侧向移动（风筝走位）
-                if (--strafeCd <= 0) {
-                    strafeCd = 6 + gf.getRandom().nextInt(6);
-                    if (--strafeFlipCd <= 0) {
-                        strafeFlipCd = 2 + gf.getRandom().nextInt(3);
-                        strafeDir = -strafeDir;
-                    }
-                    strafeAround(target, moveSpeed * 0.9, false);
-                }
-            }
-        } else if (mustApproach) {
-            if (--repathCd <= 0) {
-                repathCd = formTwo ? 8 : 16;
-                gf.getNavigation().startMovingTo(target, moveSpeed);
-            }
-        } else if (dist < preferred - band - 0.5) {
-            if (--repathCd <= 0) {
-                repathCd = formTwo ? 10 : 16;
-                backAwayFrom(target, moveSpeed, preferred);
-            }
-        } else if (formTwo) {
-            // form-2 circle-strafe
-            if (--strafeCd <= 0) {
-                strafeCd = 8 + gf.getRandom().nextInt(8);
-                if (--strafeFlipCd <= 0) {
-                    strafeFlipCd = 3 + gf.getRandom().nextInt(4);
-                    strafeDir = -strafeDir;
-                }
-                strafeAround(target, moveSpeed * 0.8, true);
-            }
+        // 形态一：strafe 风筝——始终正面朝敌，用 moveControl.strafeTo 相对自身朝向移动；太近就「面对敌人后撤」拉开、
+        // 太远就靠近、距离合适则缓退 + 侧移走位。形态二：贴近 + 环绕（沿用寻路）。
+        if (!formTwo) {
+            kiteFormOne(target, b, dist, canSee);
         } else {
-            // form-1: mostly stand and cast. Hold position; very occasionally take one small side-step.
-            if (--strafeCd <= 0) {
-                strafeCd = 45 + gf.getRandom().nextInt(45);
-                if (gf.getRandom().nextInt(3) == 0) {
-                    strafeDir = -strafeDir;
-                    strafeAround(target, moveSpeed * 0.5, false);
-                } else {
-                    gf.getNavigation().stop();
+            double moveSpeed = b.moveSpeed * 1.35;
+            double band = 1.0;
+            boolean mustApproach = dist > preferred + band || (!canSee && dist > preferred);
+            if (mustApproach) {
+                if (--repathCd <= 0) { repathCd = 8; gf.getNavigation().startMovingTo(target, moveSpeed); }
+            } else if (dist < preferred - band - 0.5) {
+                if (--repathCd <= 0) { repathCd = 10; backAwayFrom(target, moveSpeed, preferred); }
+            } else {
+                if (--strafeCd <= 0) {
+                    strafeCd = 8 + gf.getRandom().nextInt(8);
+                    if (--strafeFlipCd <= 0) { strafeFlipCd = 3 + gf.getRandom().nextInt(4); strafeDir = -strafeDir; }
+                    strafeAround(target, moveSpeed * 0.8, true);
                 }
-            } else if (!gf.getNavigation().isIdle() && gf.getRandom().nextInt(20) == 0) {
-                gf.getNavigation().stop();   // shed any leftover path so she settles
+            }
+            // 形态二 watchdog：长时间没命中就直接压上去。
+            if (++idleAttackTicks > 50) {
+                gf.getNavigation().startMovingTo(target, moveSpeed);
+                if (idleAttackTicks > 70) idleAttackTicks = 0;
             }
         }
 
-        // Watchdog: if she hasn't managed to land a hit for a while (stuck path / lost LOS / strafed into a
-        // corner), force her to march straight at the target so she never just stands there doing nothing.
-        if (++idleAttackTicks > 50) {
-            gf.getNavigation().startMovingTo(target, moveSpeed);
-            if (idleAttackTicks > 70) idleAttackTicks = 0;   // re-arm the watchdog so it keeps nudging
-        }
-
+        // 施法：形态一逃跑途中不开火（背对着跑），已拉开、停下面敌时才打；被逼到角落逃不掉（寻路走不动）时也照样还击，别站着挨打。形态二贴身即可。
+        boolean canAttack = formTwo || !fleeing || gf.getNavigation().isIdle();
         if (rangedCd > 0) { rangedCd--; return; }
-        if (dist <= maxRange && canSee) {
+        if (canAttack && dist <= maxRange && canSee) {
             rangedCd = Math.max(10, b.rangedIntervalTicks);
             gf.swingHand(Hand.MAIN_HAND);
             castCombo(sw, formTwo);
@@ -195,6 +150,83 @@ public class DaniyaAttackGoal extends Goal {
             gf.gainEnergy(b.energyPerHit);
             idleAttackTicks = 0;   // landed a hit → reset the freeze watchdog
         }
+    }
+
+    /**
+     * 形态一·strafe 风筝：始终正面朝敌（设身体朝向，strafeTo 据此算移动方向），按距离决定 forward——太远 forward&gt;0
+     * 靠近到射程、太近（或有怪贴脸）forward&lt;0「面对敌人后撤」拉开、距离合适则缓退 + 侧移走位。{@code strafeTo} 不走
+     * 寻路、移动相对身体朝向，所以她能边正面对敌、边向后/侧向拉开，靠远程优势风筝——这才是真正的风筝，而不是背身盲狙。
+     */
+    /**
+     * 形态一·风筝（跑-停-打循环）：以「最近的怪」（不只当前目标）为准——最近的怪逼近到 fleeDist 内，她就<strong>转身背对着
+     * 往远离所有近处怪的方向跑开</strong>（真·拉开距离，不是面敌倒走），逃跑途中不开火；一旦拉开到 safeDist 外，就停下、
+     * 转身正对目标、原地开火。中间用迟滞避免抖动。看不见/超射程则走近到射程再打。
+     */
+    private void kiteFormOne(LivingEntity target, GirlfriendConfig.Behavior b, double dist, boolean canSee) {
+        double nearestSq = nearestHostileSq();
+        double fleeDist = 5.0, safeDist = 8.0;   // 缩短：进到5格逃、拉开到8格就停下打（别跑太远）
+        long now = gf.getEntityWorld().getTime();
+
+        // 逃不掉就别无限风筝：跑不过快怪（小僵尸）/没空间时会一直逃到被耗死——明明打得过。所以站桩还击一阵。
+        if (now < standFightUntil) {
+            fleeing = false;
+            gf.getNavigation().stop();
+            faceEntity(target);
+            return;
+        }
+
+        if (nearestSq < fleeDist * fleeDist) fleeing = true;          // 有怪逼近 → 逃
+        else if (nearestSq > safeDist * safeDist) fleeing = false;    // 拉开够了 → 停下打
+
+        if (fleeing) {
+            if (++fleeTicks > 70) {          // 逃了 s 还没甩开（跑不过/没空间）→ 停下站桩打 ~2.5s，别被耗死
+                fleeTicks = 0;
+                standFightUntil = now + 50;
+                fleeing = false;
+                gf.getNavigation().stop();
+                faceEntity(target);
+                return;
+            }
+            if (--repathCd <= 0) { repathCd = 6; fleeAwayFromHostiles(b.moveSpeed * 1.35); }
+        } else {
+            fleeTicks = 0;
+            if (dist > b.rangedMaxDistance || !canSee) {
+                if (--repathCd <= 0) { repathCd = 12; gf.getNavigation().startMovingTo(target, b.moveSpeed); }
+            } else {
+                gf.getNavigation().stop();   // 已拉开、射程内 → 停下、转身正对目标、原地开火
+                faceEntity(target);
+            }
+        }
+    }
+
+    /**
+     * 逃开：朝「远离附近所有怪的合力方向」寻路跑开（背对敌人、全速）——越近的怪权重越大，所以她往人最少、最空的方向撤。
+     * 用寻路（不是 strafe），所以是真正转身跑开、会绕障，而不是面朝敌人倒走。
+     */
+    private void fleeAwayFromHostiles(double speed) {
+        Vec3d away = Vec3d.ZERO;
+        var box = gf.getBoundingBox().expand(10.0);
+        for (net.minecraft.entity.Entity e : gf.getEntityWorld().getOtherEntities(gf, box,
+                x -> x instanceof net.minecraft.entity.mob.HostileEntity && x.isAlive())) {
+            Vec3d d = gf.getEntityPos().subtract(e.getEntityPos());
+            double len = d.length();
+            if (len > 1.0e-3) away = away.add(d.multiply(1.0 / (len * len)));
+        }
+        if (away.lengthSquared() < 1.0e-6) return;
+        away = away.normalize();
+        gf.getNavigation().startMovingTo(gf.getX() + away.x * 8.0, gf.getY(), gf.getZ() + away.z * 8.0, speed);
+    }
+
+    /** Turn to face the target — used only in the attack stance (逃跑时靠寻路自然背对敌人跑，不在这里转身). */
+    private void faceEntity(LivingEntity target) {
+        double dx = target.getX() - gf.getX();
+        double dz = target.getZ() - gf.getZ();
+        if (dx * dx + dz * dz < 1.0e-4) return;
+        float yaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
+        gf.setYaw(yaw);
+        gf.setBodyYaw(yaw);
+        gf.setHeadYaw(yaw);
+        gf.getLookControl().lookAt(target, 30f, 30f);
     }
 
     /** Orbit the target: step to a point at the current radius but rotated sideways (circle-strafe). */
@@ -228,10 +260,10 @@ public class DaniyaAttackGoal extends Goal {
         gf.getNavigation().startMovingTo(nx, gf.getY(), nz, speed);
     }
 
-    /** Squared distance to the nearest live hostile within 8 blocks (MAX_VALUE if none). */
+    /** Squared distance to the nearest live hostile within 16 blocks (MAX_VALUE if none). */
     private double nearestHostileSq() {
         double best = Double.MAX_VALUE;
-        var box = gf.getBoundingBox().expand(8.0);
+        var box = gf.getBoundingBox().expand(16.0);
         for (net.minecraft.entity.Entity e : gf.getEntityWorld().getOtherEntities(gf, box,
                 x -> x instanceof net.minecraft.entity.mob.HostileEntity && x.isAlive())) {
             best = Math.min(best, gf.squaredDistanceTo(e));

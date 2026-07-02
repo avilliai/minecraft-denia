@@ -8,12 +8,18 @@ import net.fabricmc.fabric.api.event.player.AttackEntityCallback;
 import net.fabricmc.fabric.api.message.v1.ServerMessageEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import net.fabricmc.fabric.api.event.player.UseBlockCallback;
+import net.minecraft.block.BlockState;
+import net.minecraft.block.Blocks;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 import net.minecraft.util.ActionResult;
+import net.minecraft.util.Hand;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Direction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import xyz.apollodorus.mcgf.ai.ChatBrain;
@@ -66,6 +72,8 @@ public class MCGirlfriendMod implements ModInitializer {
             cfg.behavior.autoGatherCrops = payload.autoGatherCrops();
             cfg.behavior.autoStorage = payload.autoStorage();
             cfg.behavior.autoLight = payload.autoLight();
+            cfg.behavior.autoFish = payload.autoFish();
+            cfg.behavior.autoFarm = payload.autoFarm();
             ConfigManager.save(cfg);
             context.player().sendMessage(Text.literal("「" + cfg.persona.displayName + "」的接口配置已保存~"), false);
         });
@@ -99,6 +107,23 @@ public class MCGirlfriendMod implements ModInitializer {
                 if (gf.isRemoved() || !gf.isAlive() || !gf.isCombatEnabled()) continue;
                 if (!gf.isOwner(player) || gf.getEntityWorld() != world || gf == entity) continue;
                 if (gf.squaredDistanceTo(player) <= reach * reach) gf.markAssistTarget(living);
+            }
+            return ActionResult.PASS;
+        });
+
+        // 玩家亲自打开（右键）某个箱子后，她就不再感知/带路去那个箱子了——别再老催着去看一个你已经翻过的箱子。
+        UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
+            if (world.isClient() || hand != Hand.MAIN_HAND || hitResult == null) return ActionResult.PASS;
+            BlockPos pos = hitResult.getBlockPos();
+            BlockState st = world.getBlockState(pos);
+            if (!isContainerBlock(st)) return ActionResult.PASS;
+            for (GirlfriendEntity gf : GirlfriendEntity.ACTIVE) {
+                if (gf.isRemoved() || !gf.isOwner(player) || gf.getEntityWorld() != world) continue;
+                gf.ignoreChest(pos);
+                for (Direction d : Direction.Type.HORIZONTAL) {   // 大箱子的另一半也一并忽略
+                    BlockPos n = pos.offset(d);
+                    if (world.getBlockState(n).isOf(st.getBlock())) gf.ignoreChest(n);
+                }
             }
             return ActionResult.PASS;
         });
@@ -153,6 +178,11 @@ public class MCGirlfriendMod implements ModInitializer {
         // Claim an unowned girlfriend the first time the player talks to her.
         if (gf.getOwnerUuid() == null) gf.setOwnerUuid(sender.getUuid());
         if (BRAIN != null) BRAIN.handleChat(sender, gf, text);
+    }
+
+    /** True if the block is a chest/barrel she perceives — used to stop perceiving one the player opened. */
+    private static boolean isContainerBlock(BlockState st) {
+        return st.isOf(Blocks.CHEST) || st.isOf(Blocks.TRAPPED_CHEST) || st.isOf(Blocks.BARREL);
     }
 
     /** True if the player already holds {@code item} anywhere in their inventory. */

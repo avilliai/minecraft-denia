@@ -36,6 +36,7 @@ public final class MoodManager {
     private static final class State {
         long lastSpoke = Long.MIN_VALUE / 2;
         long lastEventSpoke = Long.MIN_VALUE / 2;   // event-triggered lines have their own (longer) cooldown
+        long lastPlayerChatTick = Long.MIN_VALUE / 2; // when the player last talked TO her (drives 沉默感知)
         String biome;
         boolean night;
         boolean hostiles;
@@ -73,7 +74,13 @@ public final class MoodManager {
             PlayerEntity owner = gf.getOwner();
             if (owner == null || gf.squaredDistanceTo(owner) > 64.0 * 64.0) continue;
 
-            State s = STATES.computeIfAbsent(gf.getUuid(), k -> new State());
+            // 首次见到这只达妮娅时，把沉默感知时钟设到「现在」——她从正常热度起步，之后若一直没人理她
+            // 才慢慢安静下来（而不是一开始就被当成已沉默很久）。玩家说话会经 notePlayerChatted 重置。
+            State s = STATES.computeIfAbsent(gf.getUuid(), k -> {
+                State st = new State();
+                st.lastPlayerChatTick = tick;
+                return st;
+            });
 
             // detect() runs every check so the baselines (群系/天气/昼夜/敌人) stay fresh and a change is
             // never silently swallowed. Whether she actually SPEAKS is gated below: event lines by the long
@@ -87,11 +94,47 @@ public final class MoodManager {
             // Nothing notable → maybe a calm ambient remark, on its own (shorter) cadence.
             // 战斗/他快没血/二形态时不碎碎念——专心打或护人，别在打架时馋蛋糕。
             if (countHostiles(gf) > 0 || owner.getHealth() <= 6.0f || gf.isFormTwo()) continue;
-            if (tick - s.lastSpoke < minGap || !ambientWindow) continue;
-            if (gf.getRandom().nextDouble() > cfg.behavior.proactiveChance) continue;
+
+            // 沉默感知：玩家越久没跟她说话，她越安静——主动碎碎念的概率收紧、间隔拉长，最终基本闭嘴、安静做
+            // 自己的事。事件（怪/夜/箱子/钓到鱼…）走的是上面的事件通道，不受此压制——「只有发生事情才打破沉默」。
+            long silence = tick - s.lastPlayerChatTick;
+            long engagedTicks = (long) Math.max(20, cfg.behavior.engagedSeconds) * 20L;
+            long coolingTicks = (long) Math.max(cfg.behavior.engagedSeconds + 1, cfg.behavior.coolingSeconds) * 20L;
+            double chance = cfg.behavior.proactiveChance;
+            long gap = minGap;
+            if (silence >= coolingTicks) {            // QUIET：基本不主动碎碎念
+                chance *= Math.max(0.0, cfg.behavior.quietAmbientChanceScale);
+                gap = minGap * 3;
+            } else if (silence >= engagedTicks) {     // COOLING：明显变稀
+                chance *= 0.4;
+                gap = minGap * 2;
+            }
+
+            // 长沉默打破：玩家和她都安静了很久，偶尔轻声打破一下（走事件通道，复用事件冷却，不会和其它叠在一起）。
+            long longSilenceTicks = (long) Math.max(60, cfg.behavior.longSilenceMinSeconds) * 20L;
+            if (ambientWindow && silence >= longSilenceTicks && (tick - s.lastSpoke) >= longSilenceTicks
+                    && gf.getRandom().nextDouble() < cfg.behavior.longSilenceChance
+                    && tryEventProactive(gf, GirlfriendConfig.pickOne(cfg.prompts.longSilence))) {
+                continue;
+            }
+
+            if (tick - s.lastSpoke < gap || !ambientWindow) continue;
+            if (gf.getRandom().nextDouble() > chance) continue;
             s.lastSpoke = tick;
             MCGirlfriendMod.BRAIN.proactive(gf, ambient(gf));
         }
+    }
+
+    /**
+     * The player just chatted with this girlfriend — reset her 沉默感知 timer (back to the ENGAGED tier) and
+     * push her next proactive line out by a gap, so she doesn't natter on top of a reply. Server-thread only
+     * (called from {@link ChatBrain#handleChat}).
+     */
+    public static void notePlayerChatted(GirlfriendEntity gf) {
+        if (gf == null) return;
+        State s = STATES.computeIfAbsent(gf.getUuid(), k -> new State());
+        s.lastPlayerChatTick = tick;
+        s.lastSpoke = tick;   // don't proactively chatter right on top of answering him
     }
 
     /**

@@ -154,6 +154,7 @@ public class PerceiveChestGoal extends Goal {
         for (int tries = 0; tries < 8; tries++) {
             BlockPos p = WorkUtil.findNearestBlock(world, gf.getBlockPos(), b.perceiveRadius, IS_CONTAINER, exclude);
             if (p == null) return null;
+            if (gf.isChestIgnored(p)) { exclude.add(p); continue; }                  // 玩家已打开过 → 跳过
             if (home != null && home.getSquaredDistance(p) <= hr2) { exclude.add(p); continue; }
             return p;
         }

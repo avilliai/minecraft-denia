@@ -32,6 +32,7 @@ public class FollowOwnerGoal extends Goal {
     @Override
     public boolean canStart() {
         if (!gf.isFollowing() || gf.getTask() != null || gf.getTarget() != null) return false;
+        if (gf.isGarrisoned()) return false;   // 驻守优先于跟随：被命令留守时不跟去
         // While she's leading the owner over to a noticed chest, let that goal finish (she leads him there)
         // instead of follow yanking her back — PerceiveChestGoal bails on its own if he strays too far.
         if (gf.isLeadingChest()) return false;
@@ -42,6 +43,9 @@ public class FollowOwnerGoal extends Goal {
         if (gf.isSleeping()) return false;
         PlayerEntity owner = gf.getOwner();
         if (owner == null || owner.isSpectator()) return false;
+        // 注意力机制：她正忙自己的事且主人仍在近旁逗留 → 跟随让位，别因主人走几步就把她从钓鱼/种田上拽走。
+        // 主人一旦不再逗留（开始转移阵地）或走出 recall 距离，selfBusyYield 转 false，跟随立刻收回。
+        if (selfBusyYield(owner)) return false;
         if (gf.squaredDistanceTo(owner) < square(gf.effectiveFollowStartDistance())) return false;
         this.target = owner;
         return true;
@@ -50,16 +54,36 @@ public class FollowOwnerGoal extends Goal {
     @Override
     public boolean shouldContinue() {
         if (!gf.isFollowing() || target == null || gf.getTask() != null || gf.getTarget() != null) return false;
+        if (gf.isGarrisoned()) return false;   // 驻守优先于跟随
         if (gf.isLeadingChest()) return false;
         if (gf.isIdleWorking()) return false;
         if (gf.isSleeping()) return false;
         if (target.isRemoved() || target.isSpectator()) return false;
-        // While the owner is parked she only needs to get back inside the roam leash; while he's
-        // moving she closes all the way to followStopDistance (the start/stop gap kills oscillation).
-        double stop = gf.isOwnerStationary()
+        if (selfBusyYield(target)) return false;
+        // While the owner is loitering she only needs to get back inside the roam leash; while he's
+        // covering ground she closes all the way to followStopDistance (the start/stop gap kills oscillation).
+        double stop = gf.isOwnerLoitering()
             ? gf.effectiveFollowStartDistance()
             : ConfigManager.get().behavior.followStopDistance;
         return gf.squaredDistanceTo(target) > square(stop);
+    }
+
+    /**
+     * True while a self-directed activity (fishing / farming / idle gather / dazing) should keep follow
+     * at bay. Two cases, both still bounded by the recall radius so a departing owner always reclaims her:
+     * <ul>
+     *   <li>committed: she's busy (isSelfBusy) AND the owner is still loitering nearby — small steps
+     *       don't yank her, but once he covers ground (loitering→false) follow reclaims;</li>
+     *   <li>commanded: an AI {@code go_fishing}/{@code tend_farm} freeRoam window is open — let her go do
+     *       it even if he wanders a bit (the window expires on its own).</li>
+     * </ul>
+     */
+    private boolean selfBusyYield(PlayerEntity owner) {
+        boolean committed = gf.isSelfBusy() && gf.isOwnerLoitering();
+        boolean commanded = gf.isFreeRoam();
+        if (!committed && !commanded) return false;
+        double recall = ConfigManager.get().behavior.selfBusyRecallDistance;
+        return gf.squaredDistanceTo(owner) <= recall * recall;
     }
 
     @Override

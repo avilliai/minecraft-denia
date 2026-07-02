@@ -2,7 +2,10 @@ package xyz.apollodorus.mcgf.ai;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import net.minecraft.block.BlockState;
 import net.minecraft.item.Item;
+import net.minecraft.item.Items;
+import net.minecraft.registry.tag.FluidTags;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
 import xyz.apollodorus.mcgf.config.ConfigManager;
@@ -12,6 +15,7 @@ import xyz.apollodorus.mcgf.entity.goal.WorkGoal;
 import xyz.apollodorus.mcgf.entity.work.BoatUtil;
 import xyz.apollodorus.mcgf.entity.work.WorkUtil;
 
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 /**
@@ -29,6 +33,7 @@ public final class Tools {
         arr.add(fn("follow_player", "玩家让你过来、跟着走时使用。", emptyParams()));
         arr.add(fn("come_to_player", "你想主动靠近玩家一次时使用（会开始跟随）。", emptyParams()));
         arr.add(fn("stop_moving", "玩家让你停下、在原地等待时使用（会停止当前任务）。", emptyParams()));
+        arr.add(fn("guard_area", "玩家让你留守/守住这一带/待在这儿别乱跑时使用：你会守在当前位置约15格内、不再跟着他走（之后让你跟上/过来会自动解除驻守）。", emptyParams()));
         arr.add(fn("mine_ore", "去附近挖矿石。可选 count 指定块数。", countParam("要挖的矿石数量；玩家没说具体数就别填，默认16")));
         arr.add(fn("chop_logs", "去附近砍树收集原木。可选 count 指定块数。", countParam("要砍的原木数量；玩家没说具体数就别填，默认16")));
         arr.add(fn("harvest_crops", "去附近收割成熟的庄稼并自动补种。", emptyParams()));
@@ -43,6 +48,12 @@ public final class Tools {
         arr.add(fn("set_gather", "开启或关闭闲逛时顺手采集资源。", enabledParam()));
         arr.add(fn("board_boat", "附近有船时，让你坐上最近的那条船（开船赶路前用）。", emptyParams()));
         arr.add(fn("leave_boat", "你正坐在船上时，从船上下来。", emptyParams()));
+        arr.add(fn("go_fishing", "你想去钓会儿鱼、或玩家让你去钓鱼时使用（背包里有鱼竿、附近有水才钓得成）。", emptyParams()));
+        arr.add(fn("tend_farm", "你想去打理自家菜地、或玩家让你去种地时使用（设了家、背包里有种子才行）。", emptyParams()));
+        arr.add(fn("avoid_item", "玩家说「别采集某样东西了」（比如别采铜矿）时使用：把它加入采集黑名单，之后顺手采集不再碰它。",
+            itemOnlyParams("不想再采的物品名（中/英），如 铜、铜矿、橡木")));
+        arr.add(fn("allow_item", "玩家说「又可以采集某样东西了」时使用：把它移出采集黑名单。",
+            itemOnlyParams("重新允许采集的物品名（中/英）")));
         return arr;
     }
 
@@ -56,10 +67,16 @@ public final class Tools {
                 case "come_to_player":
                     if (owner != null) gf.setOwnerUuid(owner.getUuid());
                     gf.setFollowing(true);
+                    gf.clearGarrison();   // 跟上/过来 → 自动解除驻守
                     return ok();
                 case "stop_moving":
                     gf.setFollowing(false);
                     gf.clearTask();
+                    gf.getNavigation().stop();
+                    return ok();
+                case "guard_area":
+                    gf.setGarrison(gf.getBlockPos());
+                    gf.setFollowing(false);   // 留守模式：不跟走，但仍可在区域内闲逛/守着
                     gf.getNavigation().stop();
                     return ok();
                 case "mine_ore": {
@@ -96,6 +113,26 @@ public final class Tools {
                     return "{\"ok\":true,\"boarded\":" + BoatUtil.boardNearest(gf, 6.0) + "}";
                 case "leave_boat":
                     return "{\"ok\":true,\"left\":" + BoatUtil.disembark(gf) + "}";
+                case "go_fishing":
+                    gf.setFreeRoam(1200);   // 60s「就近自由开工」窗口：让 FishingGoal 越过逗留门槛立刻开始
+                    return "{\"ok\":true,\"hasRod\":" + (gf.countItem(Items.FISHING_ROD) > 0)
+                        + ",\"waterNearby\":" + hasNearbyWater(gf) + "}";
+                case "tend_farm":
+                    gf.setFreeRoam(1200);
+                    return "{\"ok\":true,\"hasHome\":" + (gf.getHomePos() != null)
+                        + ",\"hasSeeds\":" + hasSeeds(gf) + "}";
+                case "avoid_item": {
+                    Item item = WorkUtil.resolveItem(str(args, "item"));
+                    if (item == null) return err("不认识这个物品");
+                    gf.addGatherBlacklist(item);
+                    gf.getNeeds().remove(item);   // 别一边拉黑、一边还记着要它
+                    return "{\"ok\":true,\"avoided\":\"" + WorkUtil.displayName(item) + "\"}";
+                }
+                case "allow_item": {
+                    Item item = WorkUtil.resolveItem(str(args, "item"));
+                    if (item == null) return err("不认识这个物品");
+                    return "{\"ok\":true,\"wasAvoided\":" + gf.removeGatherBlacklist(item) + "}";
+                }
                 default:
                     return "{\"ok\":false,\"error\":\"unknown tool\"}";
             }
@@ -107,6 +144,7 @@ public final class Tools {
     private static String obtain(GirlfriendEntity gf, JsonObject args) {
         Item item = WorkUtil.resolveItem(str(args, "item"));
         if (item == null) return err("不认识这个物品");
+        gf.removeGatherBlacklist(item);   // 玩家现在又要它了 → 自动解除黑名单（用户要求：拉黑后又要就自动恢复并去弄）
         // 没指定数量时：可采集的方块/矿物默认一批(=defaultGatherCount, 16)，一次性物品(工具/食物)默认 1。
         // 修复「让她挖圆石却只挖一个」：圆石走 obtain（非矿石），以前默认写死 1。
         int fallback = WorkGoal.isGettable(Task.obtain(item, 1))
@@ -132,6 +170,7 @@ public final class Tools {
     private static String remember(GirlfriendEntity gf, JsonObject args) {
         Item item = WorkUtil.resolveItem(str(args, "item"));
         if (item == null) return err("不认识这个物品");
+        gf.removeGatherBlacklist(item);   // 记下来要的东西就别在黑名单里了
         gf.addNeed(item, count(args, 1));
         return ok();
     }
@@ -141,6 +180,20 @@ public final class Tools {
         if (item == null) return err("不认识这个物品");
         int given = gf.giveToOwner(item, count(args, gf.countItem(item)));
         return "{\"ok\":true,\"gave\":" + given + "}";
+    }
+
+    private static final Predicate<BlockState> IS_WATER = st -> st.getFluidState().isIn(FluidTags.WATER);
+
+    /** Is there open water within idle range — so the LLM can say whether she can actually fish here. */
+    private static boolean hasNearbyWater(GirlfriendEntity gf) {
+        int r = ConfigManager.get().behavior.idleGatherRadius;
+        return WorkUtil.findNearestBlock(gf.getEntityWorld(), gf.getBlockPos(), r, IS_WATER, null) != null;
+    }
+
+    /** Does she carry any plantable seed — so the LLM can say whether she can actually tend a farm. */
+    private static boolean hasSeeds(GirlfriendEntity gf) {
+        return gf.countItem(Items.WHEAT_SEEDS) > 0 || gf.countItem(Items.CARROT) > 0
+            || gf.countItem(Items.POTATO) > 0 || gf.countItem(Items.BEETROOT_SEEDS) > 0;
     }
 
     // --- argument helpers ---
@@ -211,6 +264,16 @@ public final class Tools {
         JsonObject props = new JsonObject();
         props.add("item", prop("string", itemDesc));
         props.add("count", prop("integer", countDesc));
+        JsonObject p = object(props);
+        JsonArray req = new JsonArray();
+        req.add("item");
+        p.add("required", req);
+        return p;
+    }
+
+    private static JsonObject itemOnlyParams(String itemDesc) {
+        JsonObject props = new JsonObject();
+        props.add("item", prop("string", itemDesc));
         JsonObject p = object(props);
         JsonArray req = new JsonArray();
         req.add("item");

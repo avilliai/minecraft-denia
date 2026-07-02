@@ -1,5 +1,6 @@
 package xyz.apollodorus.mcgf.entity.goal;
 
+import net.minecraft.block.BlockState;
 import net.minecraft.entity.ai.goal.Goal;
 import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.entity.effect.StatusEffects;
@@ -7,29 +8,30 @@ import net.minecraft.particle.ParticleTypes;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.sound.SoundEvents;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
 import xyz.apollodorus.mcgf.combat.AbilityManager;
 import xyz.apollodorus.mcgf.entity.GirlfriendEntity;
 
-import java.util.ArrayList;
 import java.util.EnumSet;
-import java.util.List;
 
 /**
- * 二形态防御茧：当血量不佳且在领域内时，她会上升并用虚质方块围成茧保护自己，
- * 获得缓慢生命恢复。持续5秒或领域结束后解除。10分钟CD。
+ * 二形态低血量防御茧：危急时（二形态、领域内、血量低于阈值）她把自己整个围进虚质里——脚下、头顶、以及前后左右
+ * 四个方向各两格高，围成一个 1×1×2 的小室——并获得短时生命恢复；恢复结束（或领域结束）就自动撤掉所有虚质。
+ * 这是被动，十分钟内只触发一次。
+ *
+ * <p>旧版会把她传送上抬 3 格再围（糊头、卡头）所以被停用。这版<strong>不传送</strong>：就地把她围住、暂停二形态
+ * 悬浮（{@link GirlfriendEntity#setInDefensiveCocoon}）、原地静止回血，时间到/领域结束即解除并还原方块。
  */
 public class DefensiveCocoonGoal extends Goal {
-    private static final long COCOON_DURATION = 100L; // 5秒
-    private static final long COOLDOWN = 12000L; // 10分钟
-    private static final float HEALTH_THRESHOLD = 0.35f; // 血量低于35%时触发
+    private static final long COCOON_DURATION = 100L; // 回血 5 秒
+    private static final long COOLDOWN = 12000L;      // 10 分钟（被动只触发一次/10min）
+    private static final float HEALTH_THRESHOLD = 0.35f;
 
     private final GirlfriendEntity gf;
     private long lastCocoonTime = Long.MIN_VALUE / 2;
     private long cocoonEndTime;
-    private BlockPos cocoonCenter;
-    private List<BlockPos> cocoonBlocks = new ArrayList<>();
-    private boolean inCocoon;
+    private BlockPos center;
 
     public DefensiveCocoonGoal(GirlfriendEntity gf) {
         this.gf = gf;
@@ -39,134 +41,81 @@ public class DefensiveCocoonGoal extends Goal {
     @Override
     public boolean canStart() {
         if (!(gf.getEntityWorld() instanceof ServerWorld sw)) return false;
-        // 必须在二形态领域内
-        if (!gf.isFormTwo() || !AbilityManager.hasDomain(gf)) return false;
-        // 血量检查
-        if (gf.getHealth() / gf.getMaxHealth() > HEALTH_THRESHOLD) return false;
-        // 冷却时间
-        if (sw.getTime() - lastCocoonTime < COOLDOWN) return false;
-        // 不在战斗攻击动作中
-        return gf.getTarget() != null; // 有敌人但血量危险
+        if (!gf.isFormTwo() || !AbilityManager.hasDomain(gf)) return false;          // 二形态（领域内）才有
+        if (gf.getHealth() / gf.getMaxHealth() > HEALTH_THRESHOLD) return false;     // 血量过低才触发
+        if (sw.getTime() - lastCocoonTime < COOLDOWN) return false;                  // 10 分钟一次
+        return gf.getTarget() != null;                                              // 有威胁、但血量危险
     }
 
     @Override
     public boolean shouldContinue() {
         if (!(gf.getEntityWorld() instanceof ServerWorld sw)) return false;
-        // 领域结束或时间到了
-        if (!AbilityManager.hasDomain(gf)) return false;
-        if (sw.getTime() >= cocoonEndTime) return false;
-        return inCocoon;
+        if (!gf.isInDefensiveCocoon()) return false;
+        if (!gf.isFormTwo() || !AbilityManager.hasDomain(gf)) return false;          // 领域/二形态结束 → 收茧
+        return sw.getTime() < cocoonEndTime;
     }
 
     @Override
     public void start() {
         if (!(gf.getEntityWorld() instanceof ServerWorld sw)) return;
-
-        // 记录触发时间
         lastCocoonTime = sw.getTime();
         cocoonEndTime = sw.getTime() + COCOON_DURATION;
-        inCocoon = true;
-
-        // 停止攻击
         gf.setTarget(null);
         gf.getNavigation().stop();
-
-        // 上升到合适高度（当前位置上方3格）
-        cocoonCenter = new BlockPos((int)gf.getX(), (int)gf.getY() + 3, (int)gf.getZ());
-        gf.requestTeleport(cocoonCenter.getX() + 0.5, cocoonCenter.getY(), cocoonCenter.getZ() + 0.5);
-
-        // 围成茧：周围一圈 + 上下
-        createCocoon(sw);
-
-        // 播放音效
-        sw.playSound(null, gf.getBlockPos(), SoundEvents.BLOCK_AMETHYST_BLOCK_CHIME,
-            gf.getSoundCategory(), 1.0f, 0.8f);
-
-        // 给予缓慢生命恢复效果
-        gf.addStatusEffect(new StatusEffectInstance(StatusEffects.REGENERATION,
-            (int)COCOON_DURATION, 1, false, false, true));
+        gf.setInDefensiveCocoon(true);     // 暂停悬浮，原地围茧
+        gf.setVelocity(Vec3d.ZERO);
+        center = gf.getBlockPos();
+        buildCocoon(sw);
+        sw.playSound(null, gf.getBlockPos(), SoundEvents.BLOCK_AMETHYST_BLOCK_CHIME, gf.getSoundCategory(), 1.0f, 0.8f);
+        gf.heal(4.0f);   // 即时回一点，立竿见影
+        // Regen III、显示粒子——之前看不到回血主要是头卡方块在掉窒息伤抵消了；改了茧顶 + 加强这里就明显了。
+        gf.addStatusEffect(new StatusEffectInstance(StatusEffects.REGENERATION, (int) COCOON_DURATION, 2, false, true, true));
     }
 
     @Override
     public void tick() {
-        if (!(gf.getEntityWorld() instanceof ServerWorld sw)) return;
-
-        // 保持在茧中心位置
-        if (cocoonCenter != null) {
-            double dx = cocoonCenter.getX() + 0.5 - gf.getX();
-            double dy = cocoonCenter.getY() - gf.getY();
-            double dz = cocoonCenter.getZ() + 0.5 - gf.getZ();
-            if (dx*dx + dy*dy + dz*dz > 0.5) {
-                gf.setVelocity(dx * 0.1, dy * 0.1, dz * 0.1);
-            } else {
-                gf.setVelocity(0, 0, 0);
-            }
-        }
-
-        // 粒子效果：紫色粒子环绕
-        if (sw.getTime() % 4 == 0 && cocoonCenter != null) {
-            double angle = (sw.getTime() % 60) / 60.0 * Math.PI * 2;
-            double radius = 1.8;
+        if (!(gf.getEntityWorld() instanceof ServerWorld sw) || center == null) return;
+        // 原地静止：水平拉回中心、竖直不上浮，让她安稳缩在茧里。
+        double cx = center.getX() + 0.5, cz = center.getZ() + 0.5;
+        Vec3d v = gf.getVelocity();
+        gf.setVelocity((cx - gf.getX()) * 0.2, Math.min(0.0, v.y), (cz - gf.getZ()) * 0.2);
+        if (sw.getTime() % 4 == 0) {
+            double a = (sw.getTime() % 60) / 60.0 * Math.PI * 2;
             for (int i = 0; i < 3; i++) {
-                double a = angle + i * Math.PI * 2 / 3;
-                double x = cocoonCenter.getX() + 0.5 + Math.cos(a) * radius;
-                double z = cocoonCenter.getZ() + 0.5 + Math.sin(a) * radius;
-                double y = cocoonCenter.getY() + (sw.getTime() % 20) / 20.0 * 2 - 1;
-                sw.spawnParticles(ParticleTypes.PORTAL, x, y, z, 1, 0, 0, 0, 0);
+                double ang = a + i * Math.PI * 2 / 3;
+                sw.spawnParticles(ParticleTypes.PORTAL, cx + Math.cos(ang) * 0.6,
+                    center.getY() + 1.0, cz + Math.sin(ang) * 0.6, 1, 0, 0, 0, 0);
             }
         }
     }
 
     @Override
     public void stop() {
-        if (!(gf.getEntityWorld() instanceof ServerWorld sw)) return;
+        if (gf.getEntityWorld() instanceof ServerWorld sw) {
+            sw.playSound(null, gf.getBlockPos(), SoundEvents.BLOCK_GLASS_BREAK, gf.getSoundCategory(), 0.8f, 1.2f);
+            sw.spawnParticles(ParticleTypes.ENCHANT, gf.getX(), gf.getY() + 1, gf.getZ(), 24, 0.4, 0.5, 0.4, 0.15);
+        }
+        AbilityManager.blocks().restoreOwned(this);   // 撤掉所有围茧虚质
+        gf.setInDefensiveCocoon(false);
+        center = null;
+    }
 
-        // 移除茧
-        destroyCocoon(sw);
-
-        inCocoon = false;
-        cocoonCenter = null;
-
-        // 播放破茧音效
-        sw.playSound(null, gf.getBlockPos(), SoundEvents.BLOCK_GLASS_BREAK,
-            gf.getSoundCategory(), 0.8f, 1.2f);
-
-        // 粒子爆发效果
-        for (int i = 0; i < 20; i++) {
-            double angle = Math.random() * Math.PI * 2;
-            double vx = Math.cos(angle) * 0.3;
-            double vz = Math.sin(angle) * 0.3;
-            sw.spawnParticles(ParticleTypes.ENCHANT,
-                gf.getX(), gf.getY() + 1, gf.getZ(),
-                1, vx, 0.3, vz, 0.1);
+    /** 把她围进虚质小室：脚下、四面三格高、以及头顶上方（{@code up(3)}，留出她 1.8 高的头，不再糊头窒息）。只在空气/可替换处放。 */
+    private void buildCocoon(ServerWorld sw) {
+        long expiry = cocoonEndTime + 20;
+        placeVoid(sw, center.down(), expiry);    // 脚下
+        placeVoid(sw, center.up(3), expiry);     // 头顶再往上两格——中心列 up(1)/up(2) 留空给头，避免卡头窒息
+        for (Direction d : Direction.Type.HORIZONTAL) {
+            placeVoid(sw, center.offset(d), expiry);         // 脚高四面
+            placeVoid(sw, center.up().offset(d), expiry);    // 头高四面
+            placeVoid(sw, center.up(2).offset(d), expiry);   // 再高一层四面，把上方也围严
         }
     }
 
-    /** 创建茧：周围一圈虚质方块 */
-    private void createCocoon(ServerWorld sw) {
-        cocoonBlocks.clear();
-
-        // 周围一圈（半径2）
-        for (int dx = -2; dx <= 2; dx++) {
-            for (int dy = -1; dy <= 1; dy++) {
-                for (int dz = -2; dz <= 2; dz++) {
-                    // 只在外壳放置方块，不是实心的
-                    boolean isShell = Math.abs(dx) == 2 || Math.abs(dz) == 2 || Math.abs(dy) == 1;
-                    if (isShell) {
-                        BlockPos pos = cocoonCenter.add(dx, dy, dz);
-                        // 持续时间：茧结束时间 + 一点缓冲
-                        AbilityManager.blocks().place(sw, pos, cocoonEndTime + 20, this);
-                        cocoonBlocks.add(pos);
-                    }
-                }
-            }
+    private void placeVoid(ServerWorld sw, BlockPos pos, long expiry) {
+        BlockState st = sw.getBlockState(pos);
+        if (st.isAir() || st.isReplaceable()) {
+            AbilityManager.blocks().place(sw, pos, expiry, this);
         }
-    }
-
-    /** 销毁茧 */
-    private void destroyCocoon(ServerWorld sw) {
-        // 通过 owner 参数移除所有属于这个茧的方块
-        AbilityManager.blocks().restoreOwned(this);
-        cocoonBlocks.clear();
     }
 }

@@ -7,13 +7,10 @@ import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.entity.mob.HostileEntity;
 import net.minecraft.particle.DustParticleEffect;
 import net.minecraft.particle.ParticleTypes;
-import net.minecraft.registry.entry.RegistryEntry;
 import net.minecraft.server.world.ServerWorld;
-import net.minecraft.sound.SoundCategory;
-import net.minecraft.sound.SoundEvent;
-import net.minecraft.sound.SoundEvents;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
+import xyz.apollodorus.mcgf.ai.SpeechBus;
 import xyz.apollodorus.mcgf.config.ConfigManager;
 import xyz.apollodorus.mcgf.config.GirlfriendConfig;
 import xyz.apollodorus.mcgf.entity.GirlfriendEntity;
@@ -45,7 +42,8 @@ public final class BubbleAbilities {
         Vec3d to = target.getEntityPos().add(0, target.getHeight() * 0.5, 0);
         int duration = strong ? 20 : 16;
         floatBubblesToward(sw, from, to, strong);
-        play(gf, SoundEvents.ENTITY_PLAYER_SPLASH, 0.7f, strong ? 0.8f : 1.2f);
+        // 1a/2a 自带音效，在达妮娅身边播放。
+        SpeechBus.playClip(gf, strong ? "2a" : "1a", new Vec3d(gf.getX(), gf.getEyeY(), gf.getZ()), 1.0f);
         final LivingEntity t = target;
         final float dmg = (float) (b.bubbleDamage * (strong ? 1.4 : 1.0));
         // 命中结算：泡泡抵达目标的那一刻才造成伤害。
@@ -67,7 +65,8 @@ public final class BubbleAbilities {
     public static void castBigBubble(ServerWorld sw, GirlfriendEntity gf, LivingEntity target) {
         target.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, 60, 3));
         target.addStatusEffect(new StatusEffectInstance(StatusEffects.LEVITATION, 45, 0)); // 温和浮空，留在射程内
-        play(gf, SoundEvents.ENTITY_PLAYER_SPLASH, 0.9f, 0.6f);
+        // 3a 音效在目标身上播放（不是达妮娅身边）。
+        SpeechBus.playClip(gf, "3a", target.getEntityPos().add(0, target.getHeight() * 0.5, 0), 1.0f);
         final long start = sw.getTime();
         final long end = start + 50;     // ~2.5s 包裹
         final LivingEntity t = target;
@@ -95,8 +94,8 @@ public final class BubbleAbilities {
         sw.spawnParticles(new DustParticleEffect(WHITE, 1.1f), c.x, c.y, c.z, 24, 1.3, 0.8, 1.3, 0.2);
         sw.spawnParticles(ParticleTypes.GLOW, c.x, c.y, c.z, 18, 1.2, 0.7, 1.2, 0.05);
         sw.spawnParticles(ParticleTypes.END_ROD, c.x, c.y, c.z, 14, 1.0, 0.6, 1.0, 0.08);
-        // 爆炸音效在目标位置播放，而不是达妮娅位置
-        sw.playSound(null, c.x, c.y, c.z, SoundEvents.ENTITY_GENERIC_EXPLODE, SoundCategory.NEUTRAL, 0.8f, 1.4f);
+        // 4a 引爆音效在目标位置播放（不是达妮娅位置）。
+        SpeechBus.playClip(gf, "4a", c, 1.0f);
     }
 
     // --- helpers ---
@@ -180,13 +179,5 @@ public final class BubbleAbilities {
                 ((LivingEntity) e).damage(sw, sw.getDamageSources().mobAttack(gf), dmg);
             }
         }
-    }
-
-    private static void play(GirlfriendEntity gf, SoundEvent sound, float vol, float pitch) {
-        gf.getEntityWorld().playSound(null, gf.getX(), gf.getY(), gf.getZ(), sound, SoundCategory.NEUTRAL, vol, pitch);
-    }
-
-    private static void play(GirlfriendEntity gf, RegistryEntry<SoundEvent> sound, float vol, float pitch) {
-        play(gf, sound.value(), vol, pitch);
     }
 }

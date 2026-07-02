@@ -31,12 +31,16 @@ public class CompanionConfigScreen extends Screen {
     private boolean cropsEnabled;
     private boolean storageEnabled;
     private boolean lightEnabled;
+    private boolean fishEnabled;
+    private boolean farmEnabled;
     private ButtonWidget ttsToggle;
     private ButtonWidget woodToggle;
     private ButtonWidget pickupToggle;
     private ButtonWidget cropsToggle;
     private ButtonWidget storageToggle;
     private ButtonWidget lightToggle;
+    private ButtonWidget fishToggle;
+    private ButtonWidget farmToggle;
 
     public CompanionConfigScreen() {
         super(Text.literal("达妮娅 · 接口配置"));
@@ -51,63 +55,51 @@ public class CompanionConfigScreen extends Screen {
         cropsEnabled = cfg.behavior.autoGatherCrops;
         storageEnabled = cfg.behavior.autoStorage;
         lightEnabled = cfg.behavior.autoLight;
+        fishEnabled = cfg.behavior.autoFish;
+        farmEnabled = cfg.behavior.autoFarm;
 
-        int w = Math.min(320, this.width - 40);
+        int w = Math.min(360, this.width - 40);
         int x = (this.width - w) / 2;
-        int gap = 26;
-        int half = (w - 8) / 2;
-        int y = Math.max(28, (this.height - 230) / 2);
+        int half = (w - 10) / 2;
+        int rightX = x + w - half;
+        int rowH = 28;
+        int y = Math.max(30, (this.height - 230) / 2);
 
-        llmUrl    = field(x, y, w, cfg.llm.baseURL);      y += gap;
-        llmKey    = field(x, y, w, cfg.llm.apiKey);       y += gap;
-        llmModel  = field(x, y, w, cfg.llm.model);        y += gap;
-        ttsUrl    = field(x, y, w, cfg.tts.url);          y += gap;
-        ttsRef    = field(x, y, w, cfg.tts.refAudioPath); y += gap;
-        ttsPrompt = field(x, y, w, cfg.tts.promptText);   y += gap + 4;
+        // 文本框分两列（左 LLM、右 TTS），各三行——高度减半，default GUI 尺寸下也放得下。
+        llmUrl    = field(x, y, half, cfg.llm.baseURL);
+        ttsUrl    = field(rightX, y, half, cfg.tts.url);          y += rowH;
+        llmKey    = field(x, y, half, cfg.llm.apiKey);
+        ttsRef    = field(rightX, y, half, cfg.tts.refAudioPath); y += rowH;
+        llmModel  = field(x, y, half, cfg.llm.model);
+        ttsPrompt = field(rightX, y, half, cfg.tts.promptText);   y += rowH + 4;
 
-        // 第一行：TTS 和自动撸树
-        ttsToggle = ButtonWidget.builder(ttsLabel(), b -> {
-            ttsEnabled = !ttsEnabled;
-            ttsToggle.setMessage(ttsLabel());
-        }).dimensions(x, y, half, 20).build();
-        addDrawableChild(ttsToggle);
-        woodToggle = ButtonWidget.builder(woodLabel(), b -> {
-            woodEnabled = !woodEnabled;
-            woodToggle.setMessage(woodLabel());
-        }).dimensions(x + w - half, y, half, 20).build();
-        addDrawableChild(woodToggle);
-        y += 26;
+        // 开关：每行两个，共四行。
+        ttsToggle     = toggle(x,      y, half, this::ttsLabel,     () -> ttsEnabled = !ttsEnabled);
+        woodToggle    = toggle(rightX, y, half, this::woodLabel,    () -> woodEnabled = !woodEnabled);    y += 24;
+        pickupToggle  = toggle(x,      y, half, this::pickupLabel,  () -> pickupEnabled = !pickupEnabled);
+        cropsToggle   = toggle(rightX, y, half, this::cropsLabel,   () -> cropsEnabled = !cropsEnabled);  y += 24;
+        storageToggle = toggle(x,      y, half, this::storageLabel, () -> storageEnabled = !storageEnabled);
+        lightToggle   = toggle(rightX, y, half, this::lightLabel,   () -> lightEnabled = !lightEnabled);  y += 24;
+        fishToggle    = toggle(x,      y, half, this::fishLabel,    () -> fishEnabled = !fishEnabled);
+        farmToggle    = toggle(rightX, y, half, this::farmLabel,    () -> farmEnabled = !farmEnabled);
 
-        // 第二行：自动拾取和自动收菜
-        pickupToggle = ButtonWidget.builder(pickupLabel(), b -> {
-            pickupEnabled = !pickupEnabled;
-            pickupToggle.setMessage(pickupLabel());
-        }).dimensions(x, y, half, 20).build();
-        addDrawableChild(pickupToggle);
-        cropsToggle = ButtonWidget.builder(cropsLabel(), b -> {
-            cropsEnabled = !cropsEnabled;
-            cropsToggle.setMessage(cropsLabel());
-        }).dimensions(x + w - half, y, half, 20).build();
-        addDrawableChild(cropsToggle);
-        y += 26;
-
-        // 第三行：自动存储和自动照明
-        storageToggle = ButtonWidget.builder(storageLabel(), b -> {
-            storageEnabled = !storageEnabled;
-            storageToggle.setMessage(storageLabel());
-        }).dimensions(x, y, half, 20).build();
-        addDrawableChild(storageToggle);
-        lightToggle = ButtonWidget.builder(lightLabel(), b -> {
-            lightEnabled = !lightEnabled;
-            lightToggle.setMessage(lightLabel());
-        }).dimensions(x + w - half, y, half, 20).build();
-        addDrawableChild(lightToggle);
-        y += 26;
-
+        // 保存/取消固定贴在屏幕底部——无论 GUI 尺寸大小都看得见、点得到（之前会被挤出屏幕外）。
+        int btnY = this.height - 28;
         addDrawableChild(ButtonWidget.builder(Text.literal("保存"), b -> save())
-            .dimensions(x, y, half, 20).build());
+            .dimensions(x, btnY, half, 20).build());
         addDrawableChild(ButtonWidget.builder(Text.literal("取消"), b -> closeToGame())
-            .dimensions(x + w - half, y, half, 20).build());
+            .dimensions(rightX, btnY, half, 20).build());
+    }
+
+    /** A toggle button that flips a boolean (via {@code onToggle}) and refreshes its own label. */
+    private ButtonWidget toggle(int x, int y, int w, java.util.function.Supplier<Text> label, Runnable onToggle) {
+        ButtonWidget[] ref = new ButtonWidget[1];
+        ref[0] = ButtonWidget.builder(label.get(), b -> {
+            onToggle.run();
+            ref[0].setMessage(label.get());
+        }).dimensions(x, y, w, 20).build();
+        addDrawableChild(ref[0]);
+        return ref[0];
     }
 
     private TextFieldWidget field(int x, int y, int w, String value) {
@@ -142,11 +134,19 @@ public class CompanionConfigScreen extends Screen {
         return Text.literal("自动照明：" + (lightEnabled ? "开" : "关"));
     }
 
+    private Text fishLabel() {
+        return Text.literal("自动钓鱼：" + (fishEnabled ? "开" : "关"));
+    }
+
+    private Text farmLabel() {
+        return Text.literal("打理菜地：" + (farmEnabled ? "开" : "关"));
+    }
+
     private void save() {
         ClientPlayNetworking.send(new ConfigUpdatePayload(
             llmUrl.getText().trim(), llmKey.getText().trim(), llmModel.getText().trim(),
             ttsEnabled, ttsUrl.getText().trim(), ttsRef.getText(), ttsPrompt.getText(),
-            woodEnabled, pickupEnabled, cropsEnabled, storageEnabled, lightEnabled));
+            woodEnabled, pickupEnabled, cropsEnabled, storageEnabled, lightEnabled, fishEnabled, farmEnabled));
         closeToGame();
     }
 
@@ -156,15 +156,14 @@ public class CompanionConfigScreen extends Screen {
 
     @Override
     public void render(DrawContext ctx, int mouseX, int mouseY, float delta) {
-
         super.render(ctx, mouseX, mouseY, delta);
         ctx.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 12, TITLE);
-        label(ctx, llmUrl, "LLM 接口地址 baseURL");
+        label(ctx, llmUrl, "LLM 地址 baseURL");
         label(ctx, llmKey, "LLM 密钥 apiKey");
         label(ctx, llmModel, "对话模型 model");
-        label(ctx, ttsUrl, "语音接口 TTS url");
-        label(ctx, ttsRef, "参考音频路径 refAudioPath");
-        label(ctx, ttsPrompt, "参考音频文本 promptText");
+        label(ctx, ttsUrl, "TTS 地址 url");
+        label(ctx, ttsRef, "参考音频 refAudio");
+        label(ctx, ttsPrompt, "参考文本 promptText");
     }
 
     private void label(DrawContext ctx, TextFieldWidget f, String text) {

@@ -79,6 +79,12 @@ public final class PathAssist {
         if (!nearHome) {
             if (blocksStep(world, stepHead)) return chip(world, gf, stepHead);
             if (blocksStep(world, stepFoot)) return chip(world, gf, stepFoot);
+            // 需要往上走（目标更高）时，还要凿掉「头顶」和「前方·头顶」，否则她要踏上一格台阶时被天花板挡住、原地
+            // 卡死（STEP_HEIGHT 够爬一格，但没有头顶空间就上不去——之前必须玩家手动帮她打掉这两块）。
+            if (target.getY() - foot.getY() >= 1) {
+                if (blocksStep(world, foot.up(2))) return chip(world, gf, foot.up(2));
+                if (blocksStep(world, stepHead.up())) return chip(world, gf, stepHead.up());
+            }
         }
 
         // 2) A gap ahead (nothing to stand on) → lay an (infinite, transient) void block to bridge it.
