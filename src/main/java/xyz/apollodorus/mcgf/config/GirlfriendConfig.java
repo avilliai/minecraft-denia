@@ -113,6 +113,7 @@ public class GirlfriendConfig {
             "- 留守一带、守在这儿别乱跑：guard_area（守在当前位置约15格内、优先于跟随；之后你说「跟上/过来」会自动解除驻守）。",
             "- 挖矿（采集矿石）：mine_ore；砍树/撸木头：chop_logs；收庄稼（并补种）：harvest_crops。",
             "- 玩家要东西（铁、煤、钻石、木头、小麦、闪长岩…可说中文俗称）：obtain_item；背包里有就直接给，没有就去附近采。",
+            "- 合成东西（工具/鱼竿/工作台/箱子/盔甲…）：craft_item；缺木板木棍这类中间材料她会自动先做，缺矿石线这类原始材料会告诉你缺啥、你再让她去采（obtain_item/mine_ore）。做好的先进她背包，要给你就再 give_items_to_player。没鱼竿想钓鱼时她也会自己先做一根。",
             "- 顺手帮玩家记住要找的东西、遇到就收：remember_need。",
             "- 把背包东西给玩家：give_items_to_player。",
             "- 记下当前位置为家：set_home（玩家说「把这里当家/这儿就是家/记一下家」之类，就调用它）。",
@@ -220,8 +221,18 @@ public class GirlfriendConfig {
         public double rangedMinDistance = 4.0;
         /** Up to this distance she uses the ranged combo; visible mobs this close are engageable even if unreachable. */
         public double rangedMaxDistance = 20.0;
-        /** 形态二（蚀域）下削短的攻击距离——逼她贴近、留在领域里打，而不是远远当炮塔。 */
-        public double form2AttackDistance = 9.0;
+        /**
+         * 形态二（蚀域）攻击距离。制空权路线：不再削到很短(否则浮空时只能贴脸、被远程怪放风筝)，而是拉到中远距，
+         * 配合追踪虚质弹从空中压制。领域牵引仍会把怪拽回她脚下，所以她不会飘太远。
+         */
+        public double form2AttackDistance = 14.0;
+        /**
+         * 形态二·领域投掷物减伤(0..1)：浮空时被箭/三叉戟等命中，按此比例削减伤害(0.7 = 减 70%)——蚀域「消解」来袭投掷物，
+         * 治好「浮空当远程怪活靶子」。0 = 关闭。仅在领域生效期间的形态二成立；形态一另有投掷物墙。
+         */
+        public double form2ProjectileResist = 0.7;
+        /** 形态二虚质弹的每 tick 追踪转向比例(0=不追踪；0.16 ≈ 温和跟踪，能咬住会走位的远程怪)。 */
+        public double voidShardHoming = 0.16;
         /** Ticks between ranged combo steps (1a→2a→a3→a4). */
         public int rangedIntervalTicks = 30;
         /** Per-step base damage for the ranged kit (scaled per move); fire/热熔 themed. */
@@ -296,6 +307,12 @@ public class GirlfriendConfig {
         public boolean autoFish = true;
         /** Idle farm-tending: plant carried seeds on empty farmland near home (harvesting stays with idle gather). */
         public boolean autoFarm = true;
+
+        // --- 合成（便携 + 递归：把原版合成表接进行动逻辑）---
+        /** Let her craft items from her backpack via the vanilla recipe registry (no workbench needed). */
+        public boolean autoCraft = true;
+        /** Max recursion depth when auto-crafting intermediates (原木→木板→木棍→工具 ≈ 3 层)。 */
+        public int craftMaxDepth = 4;
         /** Min/max ticks she "waits for a bite" before reeling in a simulated catch. */
         public int fishMinCastTicks = 160;   // ~8s
         public int fishMaxCastTicks = 500;   // ~25s
@@ -435,6 +452,16 @@ public class GirlfriendConfig {
             "天黑了，夜里可能有怪，温柔提醒他注意安全；夜色也让你想多黏他一会儿。",
             "入夜了，你打了个哈欠，说夜里赶路危险又容易困，提议要不要找个地方歇脚、别硬撑。",
             "天色暗下来，你下意识往他身边靠近些，轻声说夜里不太平，让他走近点、你帮他看着四周。"
+        );
+        public List<String> nearVillage = List.of(
+            "远处好像有村子，你难得来了点精神，问他要不要去转转、跟村民换点好东西。",
+            "看到村庄啦——有活人住的地方，你软软地说进去歇歇脚也好，说不定还有吃的。",
+            "瞥见村落的轮廓，你嘀咕一句这方块世界总算不全是荒地，凑近他提议去看看。"
+        );
+        public List<String> creeperClose = List.of(
+            "有只苦力怕悄悄贴上来了，你心一紧，急急拽他快躲开、别被炸到。",
+            "苦力怕凑太近了！你『诶——』一声把他往旁边带，让他离那绿东西远点。",
+            "背后那声『嘶——』把你吓一跳，你赶紧提醒他有苦力怕、快跑。"
         );
         public List<String> newBiome = List.of(
             "你们来到了新的地方（{biome}），像第一次约会到新景点，慵懒又带点小新奇地感叹一下环境。",

@@ -5,14 +5,21 @@ import com.google.gson.JsonObject;
 import net.minecraft.block.BlockState;
 import net.minecraft.item.Item;
 import net.minecraft.item.Items;
+import net.minecraft.particle.ParticleTypes;
 import net.minecraft.registry.tag.FluidTags;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.world.ServerWorld;
+import net.minecraft.sound.SoundCategory;
+import net.minecraft.sound.SoundEvents;
+import net.minecraft.util.Hand;
 import xyz.apollodorus.mcgf.config.ConfigManager;
+import xyz.apollodorus.mcgf.ai.MemoryStore;
 import xyz.apollodorus.mcgf.entity.GirlfriendEntity;
 import xyz.apollodorus.mcgf.entity.GirlfriendEntity.Task;
 import xyz.apollodorus.mcgf.entity.goal.WorkGoal;
 import xyz.apollodorus.mcgf.entity.work.BoatUtil;
+import xyz.apollodorus.mcgf.entity.work.CraftUtil;
 import xyz.apollodorus.mcgf.entity.work.WorkUtil;
 
 import java.util.function.Predicate;
@@ -39,6 +46,8 @@ public final class Tools {
         arr.add(fn("harvest_crops", "去附近收割成熟的庄稼并自动补种。", emptyParams()));
         arr.add(fn("obtain_item", "玩家想要某样东西时使用：背包里有就直接给，没有就去附近采集。item 可用中文俗称。",
             itemCountParams("物品名（中/英），如 铁、煤、钻石、木头、小麦、diorite", "需要的数量；玩家明确说了数量才填，没说就别填（采集类默认16）")));
+        arr.add(fn("craft_item", "用背包里的材料合成某样东西（工具、鱼竿、木板、木棍、盔甲…都行）：缺木板/木棍这类中间材料会自动先做出来；缺矿石/线这类采不到又合不成的原始材料会告诉你缺什么，你再让她去采。做好的东西放进她背包（要给玩家需再调 give_items_to_player）。",
+            itemCountParams("要合成的物品名（中/英），如 木镐、鱼竿、工作台、箱子、铁剑", "要做的数量；不填默认1")));
         arr.add(fn("remember_need", "记住玩家想要的东西，之后遇到就顺手收集。",
             itemCountParams("物品名（中/英）", "想要的数量")));
         arr.add(fn("give_items_to_player", "把你背包里的某样东西给玩家。",
@@ -96,6 +105,8 @@ public final class Tools {
                 }
                 case "obtain_item":
                     return obtain(gf, args);
+                case "craft_item":
+                    return craft(gf, args);
                 case "remember_need":
                     return remember(gf, args);
                 case "give_items_to_player":
@@ -113,10 +124,18 @@ public final class Tools {
                     return "{\"ok\":true,\"boarded\":" + BoatUtil.boardNearest(gf, 6.0) + "}";
                 case "leave_boat":
                     return "{\"ok\":true,\"left\":" + BoatUtil.disembark(gf) + "}";
-                case "go_fishing":
+                case "go_fishing": {
                     gf.setFreeRoam(1200);   // 60s「就近自由开工」窗口：让 FishingGoal 越过逗留门槛立刻开始
-                    return "{\"ok\":true,\"hasRod\":" + (gf.countItem(Items.FISHING_ROD) > 0)
+                    boolean hasRod = gf.countItem(Items.FISHING_ROD) > 0;
+                    boolean craftedRod = false;
+                    if (!hasRod && ConfigManager.get().behavior.autoCraft) {   // 没竿就现做一根（够料/能凑齐中间材料）
+                        CraftUtil.Result r = CraftUtil.craft(gf, Items.FISHING_ROD, 1);
+                        if (r.ok()) { hasRod = true; craftedRod = true; craftFx(gf);
+                            MemoryStore.record(gf, "没鱼竿，自己现做了一根，去钓鱼。"); }
+                    }
+                    return "{\"ok\":true,\"hasRod\":" + hasRod + ",\"craftedRod\":" + craftedRod
                         + ",\"waterNearby\":" + hasNearbyWater(gf) + "}";
+                }
                 case "tend_farm":
                     gf.setFreeRoam(1200);
                     return "{\"ok\":true,\"hasHome\":" + (gf.getHomePos() != null)
@@ -165,6 +184,34 @@ public final class Tools {
     /** Standard result for a freshly-queued gather job, telling the LLM whether a target is nearby now. */
     private static String queued(GirlfriendEntity gf, Task t) {
         return "{\"ok\":true,\"nearby\":" + WorkGoal.hasNearbyTarget(gf, t) + "}";
+    }
+
+    /**
+     * 便携合成：用背包材料把 {@code item} 做出来（递归补中间材料，缺原始材料如实上报），做好的留在她背包里。
+     * 由 LLM 的 {@code craft_item} 调用；她自己钓鱼缺竿时也走 {@link CraftUtil}。
+     */
+    private static String craft(GirlfriendEntity gf, JsonObject args) {
+        Item item = WorkUtil.resolveItem(str(args, "item"));
+        if (item == null) return err("不认识这个物品");
+        if (!ConfigManager.get().behavior.autoCraft) return err("合成没开");
+        CraftUtil.Result r = CraftUtil.craft(gf, item, count(args, 1));
+        if (r.ok()) { craftFx(gf); MemoryStore.record(gf, "给他做了" + WorkUtil.displayName(item) + "。"); }
+        StringBuilder sb = new StringBuilder("{\"ok\":").append(r.ok())
+            .append(",\"crafted\":").append(r.crafted())
+            .append(",\"item\":\"").append(WorkUtil.displayName(item)).append('"');
+        if (r.missing() != null) sb.append(",\"missing\":\"").append(r.missing().replace('"', ' ')).append('"');
+        return sb.append('}').toString();
+    }
+
+    /** 合成动作的表演：挥手 + 一小簇虚质/末地烛粒子 + 清脆一响（纯表现，无机制）。 */
+    private static void craftFx(GirlfriendEntity gf) {
+        gf.swingHand(Hand.MAIN_HAND);
+        if (gf.getEntityWorld() instanceof ServerWorld sw) {
+            double x = gf.getX(), y = gf.getY() + 1.0, z = gf.getZ();
+            sw.spawnParticles(ParticleTypes.PORTAL, x, y, z, 12, 0.4, 0.5, 0.4, 0.02);
+            sw.spawnParticles(ParticleTypes.END_ROD, x, y, z, 6, 0.3, 0.4, 0.3, 0.01);
+            sw.playSound(null, x, y, z, SoundEvents.BLOCK_AMETHYST_BLOCK_CHIME, SoundCategory.NEUTRAL, 0.7f, 1.4f);
+        }
     }
 
     private static String remember(GirlfriendEntity gf, JsonObject args) {

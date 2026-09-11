@@ -250,6 +250,9 @@ public final class DaniyaAbilities {
                                    float dmg, boolean slow, float speed, float divergence) {
         VoidShardEntity shard = new VoidShardEntity(sw, gf);
         shard.configure(dmg, slow);
+        // 形态二·制空权：开启追踪，让浮空狙击对会动的远程怪也可靠命中(仅形态二启用，形态一泡泡弹不追)。
+        double homing = ConfigManager.get().behavior.voidShardHoming;
+        if (homing > 0 && gf.isFormTwo()) shard.setHoming(target, homing);
         double sx = gf.getX(), sy = gf.getEyeY() - 0.1, sz = gf.getZ();
         shard.setPosition(sx, sy, sz);
         double tx = target.getX() - sx;

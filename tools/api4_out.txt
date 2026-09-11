@@ -1,0 +1,145 @@
+######## Operation enum
+  public static final net.minecraft.entity.attribute.EntityAttributeModifier$Operation ADD_VALUE;
+  public static final net.minecraft.entity.attribute.EntityAttributeModifier$Operation ADD_MULTIPLIED_BASE;
+  public static final net.minecraft.entity.attribute.EntityAttributeModifier$Operation ADD_MULTIPLIED_TOTAL;
+  public static final java.util.function.IntFunction<net.minecraft.entity.attribute.EntityAttributeModifier$Operation> ID_TO_VALUE;
+  public static final net.minecraft.network.codec.PacketCodec<io.netty.buffer.ByteBuf, net.minecraft.entity.attribute.EntityAttributeModifier$Operation> PACKET_CODEC;
+  public static final com.mojang.serialization.Codec<net.minecraft.entity.attribute.EntityAttributeModifier$Operation> CODEC;
+######## ExplosionSourceType
+  public static final net.minecraft.world.World$ExplosionSourceType NONE;
+  public static final net.minecraft.world.World$ExplosionSourceType BLOCK;
+  public static final net.minecraft.world.World$ExplosionSourceType MOB;
+  public static final net.minecraft.world.World$ExplosionSourceType TNT;
+  public static final net.minecraft.world.World$ExplosionSourceType TRIGGER;
+  public static final com.mojang.serialization.Codec<net.minecraft.world.World$ExplosionSourceType> CODEC;
+######## World.getDamageSources
+  public net.minecraft.entity.damage.DamageSources getDamageSources();
+######## GameRules mobGriefing
+######## DustParticleEffect ctor (COMMON)
+public class net.minecraft.particle.DustParticleEffect extends net.minecraft.particle.AbstractDustParticleEffect {
+  public static final int RED;
+  public static final net.minecraft.particle.DustParticleEffect DEFAULT;
+  public static final com.mojang.serialization.MapCodec<net.minecraft.particle.DustParticleEffect> CODEC;
+  public static final net.minecraft.network.codec.PacketCodec<net.minecraft.network.RegistryByteBuf, net.minecraft.particle.DustParticleEffect> PACKET_CODEC;
+  public net.minecraft.particle.DustParticleEffect(int, float);
+  public net.minecraft.particle.ParticleType<net.minecraft.particle.DustParticleEffect> getType();
+  public org.joml.Vector3f getColor();
+######## Item.Settings methods
+  private static final net.minecraft.registry.RegistryKeyedValue<net.minecraft.item.Item, java.lang.String> BLOCK_PREFIXED_TRANSLATION_KEY;
+  private static final net.minecraft.registry.RegistryKeyedValue<net.minecraft.item.Item, java.lang.String> ITEM_PREFIXED_TRANSLATION_KEY;
+  private net.minecraft.registry.RegistryKey<net.minecraft.item.Item> registryKey;
+  private net.minecraft.registry.RegistryKeyedValue<net.minecraft.item.Item, java.lang.String> translationKey;
+  private final net.minecraft.registry.RegistryKeyedValue<net.minecraft.item.Item, net.minecraft.util.Identifier> modelId;
+  public net.minecraft.item.Item$Settings();
+  public net.minecraft.item.Item$Settings food(net.minecraft.component.type.FoodComponent);
+  public net.minecraft.item.Item$Settings food(net.minecraft.component.type.FoodComponent, net.minecraft.component.type.ConsumableComponent);
+  public net.minecraft.item.Item$Settings useRemainder(net.minecraft.item.Item);
+  public net.minecraft.item.Item$Settings useCooldown(float);
+  public net.minecraft.item.Item$Settings maxCount(int);
+  public net.minecraft.item.Item$Settings maxDamage(int);
+  public net.minecraft.item.Item$Settings recipeRemainder(net.minecraft.item.Item);
+  public net.minecraft.item.Item$Settings rarity(net.minecraft.util.Rarity);
+  public net.minecraft.item.Item$Settings fireproof();
+  public net.minecraft.item.Item$Settings jukeboxPlayable(net.minecraft.registry.RegistryKey<net.minecraft.block.jukebox.JukeboxSong>);
+  public net.minecraft.item.Item$Settings enchantable(int);
+  public net.minecraft.item.Item$Settings repairable(net.minecraft.item.Item);
+  public net.minecraft.item.Item$Settings repairable(net.minecraft.registry.tag.TagKey<net.minecraft.item.Item>);
+  public net.minecraft.item.Item$Settings equippable(net.minecraft.entity.EquipmentSlot);
+  public net.minecraft.item.Item$Settings equippableUnswappable(net.minecraft.entity.EquipmentSlot);
+  public net.minecraft.item.Item$Settings tool(net.minecraft.item.ToolMaterial, net.minecraft.registry.tag.TagKey<net.minecraft.block.Block>, float, float, float);
+  public net.minecraft.item.Item$Settings pickaxe(net.minecraft.item.ToolMaterial, float, float);
+  public net.minecraft.item.Item$Settings axe(net.minecraft.item.ToolMaterial, float, float);
+  public net.minecraft.item.Item$Settings hoe(net.minecraft.item.ToolMaterial, float, float);
+  public net.minecraft.item.Item$Settings shovel(net.minecraft.item.ToolMaterial, float, float);
+  public net.minecraft.item.Item$Settings sword(net.minecraft.item.ToolMaterial, float, float);
+  public net.minecraft.item.Item$Settings spear(net.minecraft.item.ToolMaterial, float, float, float, float, float, float, float, float, float);
+  public net.minecraft.item.Item$Settings spawnEgg(net.minecraft.entity.EntityType<?>);
+  public net.minecraft.item.Item$Settings armor(net.minecraft.item.equipment.ArmorMaterial, net.minecraft.item.equipment.EquipmentType);
+  public net.minecraft.item.Item$Settings wolfArmor(net.minecraft.item.equipment.ArmorMaterial);
+  public net.minecraft.item.Item$Settings horseArmor(net.minecraft.item.equipment.ArmorMaterial);
+  public net.minecraft.item.Item$Settings nautilusArmor(net.minecraft.item.equipment.ArmorMaterial);
+  public net.minecraft.item.Item$Settings trimMaterial(net.minecraft.registry.RegistryKey<net.minecraft.item.equipment.trim.ArmorTrimMaterial>);
+  public net.minecraft.item.Item$Settings requires(net.minecraft.resource.featuretoggle.FeatureFlag...);
+  public net.minecraft.item.Item$Settings registryKey(net.minecraft.registry.RegistryKey<net.minecraft.item.Item>);
+  public net.minecraft.item.Item$Settings translationKey(java.lang.String);
+  public net.minecraft.item.Item$Settings useBlockPrefixedTranslationKey();
+  public net.minecraft.item.Item$Settings useItemPrefixedTranslationKey();
+  public net.minecraft.item.Item$Settings attributeModifiers(net.minecraft.component.type.AttributeModifiersComponent);
+  private static java.lang.String method_63688(net.minecraft.registry.RegistryKey);
+  private static java.lang.String method_63690(net.minecraft.registry.RegistryKey);
+######## BlockItem ctor full
+  public net.minecraft.item.BlockItem(net.minecraft.block.Block, net.minecraft.item.Item$Settings);
+######## FlyingItemEntityRenderer
+Compiled from "FlyingItemEntityRenderer.java"
+public class net.minecraft.client.render.entity.FlyingItemEntityRenderer<T extends net.minecraft.entity.Entity & net.minecraft.entity.FlyingItemEntity> extends net.minecraft.client.render.entity.EntityRenderer<T, net.minecraft.client.render.entity.state.FlyingItemEntityRenderState> {
+  private final net.minecraft.client.item.ItemModelManager itemModelManager;
+  private final float scale;
+  private final boolean lit;
+  public net.minecraft.client.render.entity.FlyingItemEntityRenderer(net.minecraft.client.render.entity.EntityRendererFactory$Context, float, boolean);
+  public net.minecraft.client.render.entity.FlyingItemEntityRenderer(net.minecraft.client.render.entity.EntityRendererFactory$Context);
+  protected int getBlockLight(T, net.minecraft.util.math.BlockPos);
+  public void render(net.minecraft.client.render.entity.state.FlyingItemEntityRenderState, net.minecraft.client.util.math.MatrixStack, net.minecraft.client.render.command.OrderedRenderCommandQueue, net.minecraft.client.render.state.CameraRenderState);
+  public net.minecraft.client.render.entity.state.FlyingItemEntityRenderState createRenderState();
+  public void updateRenderState(T, net.minecraft.client.render.entity.state.FlyingItemEntityRenderState, float);
+  public void updateRenderState(net.minecraft.entity.Entity, net.minecraft.client.render.entity.state.EntityRenderState, float);
+  public net.minecraft.client.render.entity.state.EntityRenderState createRenderState();
+  public void render(net.minecraft.client.render.entity.state.EntityRenderState, net.minecraft.client.util.math.MatrixStack, net.minecraft.client.render.command.OrderedRenderCommandQueue, net.minecraft.client.render.state.CameraRenderState);
+}
+######## ThrownEntity
+  protected net.minecraft.entity.projectile.thrown.ThrownEntity(net.minecraft.entity.EntityType<? extends net.minecraft.entity.projectile.thrown.ThrownEntity>, net.minecraft.world.World);
+  protected net.minecraft.entity.projectile.thrown.ThrownEntity(net.minecraft.entity.EntityType<? extends net.minecraft.entity.projectile.thrown.ThrownEntity>, double, double, double, net.minecraft.world.World);
+  protected double getGravity();
+######## ProjectileEntity hit hooks
+  protected void onCollision(net.minecraft.util.hit.HitResult);
+  protected void onEntityHit(net.minecraft.util.hit.EntityHitResult);
+  protected void onBlockHit(net.minecraft.util.hit.BlockHitResult);
+######## EntityHitResult
+  public net.minecraft.entity.Entity getEntity();
+######## BlockSoundGroup
+  public static final net.minecraft.sound.BlockSoundGroup STONE;
+  public static final net.minecraft.sound.BlockSoundGroup METAL;
+  public static final net.minecraft.sound.BlockSoundGroup GLASS;
+  public static final net.minecraft.sound.BlockSoundGroup WOOL;
+  public static final net.minecraft.sound.BlockSoundGroup HONEY;
+  public static final net.minecraft.sound.BlockSoundGroup NETHERITE;
+  public static final net.minecraft.sound.BlockSoundGroup LODESTONE;
+  public static final net.minecraft.sound.BlockSoundGroup GILDED_BLACKSTONE;
+  public static final net.minecraft.sound.BlockSoundGroup AMETHYST_BLOCK;
+  public static final net.minecraft.sound.BlockSoundGroup AMETHYST_CLUSTER;
+  public static final net.minecraft.sound.BlockSoundGroup SMALL_AMETHYST_BUD;
+  public static final net.minecraft.sound.BlockSoundGroup MEDIUM_AMETHYST_BUD;
+  public static final net.minecraft.sound.BlockSoundGroup LARGE_AMETHYST_BUD;
+  public static final net.minecraft.sound.BlockSoundGroup DRIPSTONE_BLOCK;
+  public static final net.minecraft.sound.BlockSoundGroup POINTED_DRIPSTONE;
+  public static final net.minecraft.sound.BlockSoundGroup SCULK_SENSOR;
+  public static final net.minecraft.sound.BlockSoundGroup SCULK_CATALYST;
+  public static final net.minecraft.sound.BlockSoundGroup SCULK;
+  public static final net.minecraft.sound.BlockSoundGroup SCULK_VEIN;
+  public static final net.minecraft.sound.BlockSoundGroup SCULK_SHRIEKER;
+  public static final net.minecraft.sound.BlockSoundGroup DEEPSLATE;
+  public static final net.minecraft.sound.BlockSoundGroup DEEPSLATE_BRICKS;
+  public static final net.minecraft.sound.BlockSoundGroup DEEPSLATE_TILES;
+  public static final net.minecraft.sound.BlockSoundGroup POLISHED_DEEPSLATE;
+  public static final net.minecraft.sound.BlockSoundGroup FROGLIGHT;
+######## MapColor
+  public static final net.minecraft.block.MapColor BRIGHT_RED;
+  public static final net.minecraft.block.MapColor PALE_PURPLE;
+  public static final net.minecraft.block.MapColor MAGENTA;
+  public static final net.minecraft.block.MapColor PINK;
+  public static final net.minecraft.block.MapColor PURPLE;
+  public static final net.minecraft.block.MapColor RED;
+  public static final net.minecraft.block.MapColor BLACK;
+  public static final net.minecraft.block.MapColor DARK_RED;
+  public static final net.minecraft.block.MapColor TERRACOTTA_MAGENTA;
+  public static final net.minecraft.block.MapColor TERRACOTTA_PINK;
+  public static final net.minecraft.block.MapColor TERRACOTTA_PURPLE;
+  public static final net.minecraft.block.MapColor TERRACOTTA_RED;
+  public static final net.minecraft.block.MapColor TERRACOTTA_BLACK;
+  public static final net.minecraft.block.MapColor DULL_RED;
+  public static final net.minecraft.block.MapColor DULL_PINK;
+  public static final net.minecraft.block.MapColor DARK_DULL_PINK;
+  public static final net.minecraft.block.MapColor RAW_IRON_PINK;
+######## FabricItemGroupEntries
+  public static final net.fabricmc.fabric.api.event.Event<net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents$ModifyEntriesAll> MODIFY_ENTRIES_ALL;
+  public static net.fabricmc.fabric.api.event.Event<net.fabricmc.fabric.api.itemgroup.v1.ItemGroupEvents$ModifyEntries> modifyEntriesEvent(net.minecraft.class_5321<net.minecraft.class_1761>);
+######## ItemGroups RegistryKeys

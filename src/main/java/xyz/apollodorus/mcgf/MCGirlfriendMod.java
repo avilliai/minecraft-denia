@@ -1,6 +1,7 @@
 package xyz.apollodorus.mcgf;
 
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.entity.event.v1.ServerEntityWorldChangeEvents;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
@@ -93,6 +94,23 @@ public class MCGirlfriendMod implements ModInitializer {
             handlePlayerChat(sender, text);
         });
 
+        // 绑定持久化记忆到当前存档目录（重启不忘）。
+        ServerLifecycleEvents.SERVER_STARTED.register(xyz.apollodorus.mcgf.ai.MemoryStore::init);
+
+        // 情景记忆埋点：玩家死亡 / 维度切换——记下「你们一起经历过的事」，只入记忆、绝不主动念出来。
+        ServerLivingEntityEvents.AFTER_DEATH.register((entity, source) -> {
+            if (entity instanceof ServerPlayerEntity player) {
+                recordEpisodeForOwner(player, "他死了一次，你后怕又心疼，忍不住念叨要他小心点。");
+            }
+        });
+        ServerEntityWorldChangeEvents.AFTER_PLAYER_CHANGE_WORLD.register((player, origin, destination) -> {
+            var key = destination.getRegistryKey();
+            String where = key == net.minecraft.world.World.NETHER ? "下界"
+                : key == net.minecraft.world.World.END ? "末地"
+                : key == net.minecraft.world.World.OVERWORLD ? "主世界" : null;
+            if (where != null) recordEpisodeForOwner(player, "你们一起去了" + where + "。");
+        });
+
         // Drive proactive mood / environment awareness once the server is ticking.
         ServerTickEvents.END_SERVER_TICK.register(MoodManager::onServerTick);
         // Drive 达妮娅's world-anchored abilities (蚀域 domain, transient bridge/pillar blocks, black hole).
@@ -165,6 +183,7 @@ public class MCGirlfriendMod implements ModInitializer {
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
             if (BRAIN != null) BRAIN.shutdown();
             AbilityManager.flushAll();
+            xyz.apollodorus.mcgf.ai.MemoryStore.flush();   // 落盘全部长期记忆/情景事件
             xyz.apollodorus.mcgf.entity.GirlfriendEntity.ACTIVE.clear();
         });
 
@@ -178,6 +197,14 @@ public class MCGirlfriendMod implements ModInitializer {
         // Claim an unowned girlfriend the first time the player talks to her.
         if (gf.getOwnerUuid() == null) gf.setOwnerUuid(sender.getUuid());
         if (BRAIN != null) BRAIN.handleChat(sender, gf, text);
+    }
+
+    /** Record a shared-experience episode on every active companion owned by {@code player}. */
+    private static void recordEpisodeForOwner(ServerPlayerEntity player, String text) {
+        for (GirlfriendEntity gf : GirlfriendEntity.ACTIVE) {
+            if (gf.isRemoved() || !gf.isOwner(player)) continue;
+            xyz.apollodorus.mcgf.ai.MemoryStore.record(gf, text);
+        }
     }
 
     /** True if the block is a chest/barrel she perceives — used to stop perceiving one the player opened. */

@@ -54,8 +54,10 @@ public final class MoodManager {
         boolean wasInDarkPlace;
         boolean wasHighPlace;
         boolean wasUnderwater;
+        boolean wasNearVillage;
         boolean ownerWasLowHealth;
         boolean selfWasLowHealth;
+        final java.util.Set<String> visitedBiomes = new java.util.HashSet<>();   // 记「第一次来」的情景，只记忆不复读
     }
 
     public static void onServerTick(MinecraftServer server) {
@@ -182,6 +184,16 @@ public final class MoodManager {
         boolean newHostiles = hostiles && !s.hostiles;
         boolean nightfall = night && !s.night;
 
+        // 场景感知：贴脸苦力怕(危险)、附近村庄(有活人)。
+        boolean creeperClose = nearestCreeper(gf, 4.0);
+        boolean nearVillage = hasNearbyVillager(gf);
+        boolean enteredVillage = nearVillage && !s.wasNearVillage;
+        s.wasNearVillage = nearVillage;
+
+        // 情景记忆：第一次踏进某个生物群系(只入记忆、不主动念)——即便这次没触发感言，也记得「你们一起第一次来过」。
+        boolean firstVisit = s.visitedBiomes.add(biome);
+        if (newBiome && firstVisit) MemoryStore.record(gf, "第一次一起来到一片新地方（" + biome + "）。");
+
         // 天气变化检测
         boolean rainStart = raining && !s.raining;
         boolean thunderStart = thundering && !s.thundering;
@@ -230,9 +242,11 @@ public final class MoodManager {
             return GirlfriendConfig.pickOne(p.lowHealthSelf);
         }
         if (!selfLow) s.selfWasLowHealth = false;
+        if (creeperClose) return GirlfriendConfig.pickOne(p.creeperClose);
         if (thunderStart) return GirlfriendConfig.pickOne(p.thunderStorm);
         if (newHostiles) return GirlfriendConfig.pickOne(p.newHostiles);
         if (nightfall) return GirlfriendConfig.pickOne(p.nightfall);
+        if (enteredVillage && gf.getRandom().nextDouble() < 0.6) return GirlfriendConfig.pickOne(p.nearVillage);
 
         // 进入新群系：她会像真的看到这片地方一样主动感叹一句。放在随机环境/行为碎碎念之前，否则一进新
         // 群系常被一句随机的「好暗呀」之类抢掉、再也不播报了（这是之前感言「消失」的另一半原因）。
@@ -261,6 +275,18 @@ public final class MoodManager {
         if (weatherClear) return GirlfriendConfig.pickOne(p.weatherClear);
 
         return null;
+    }
+
+    /** True if a live creeper is within {@code r} blocks — a "小心！" moment (event-cooldown gated). */
+    private static boolean nearestCreeper(GirlfriendEntity gf, double r) {
+        return !gf.getEntityWorld().getEntitiesByClass(net.minecraft.entity.mob.CreeperEntity.class,
+            gf.getBoundingBox().expand(r), e -> e.isAlive()).isEmpty();
+    }
+
+    /** True if a villager is within ~20 blocks — a cheap "附近有村庄" proxy (avoids structure-API cost). */
+    private static boolean hasNearbyVillager(GirlfriendEntity gf) {
+        return !gf.getEntityWorld().getEntitiesByClass(net.minecraft.entity.passive.VillagerEntity.class,
+            gf.getBoundingBox().expand(20.0), e -> e.isAlive()).isEmpty();
     }
 
     /** 获取天气+生物群系组合的特殊反应 */

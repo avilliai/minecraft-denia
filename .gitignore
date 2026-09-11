@@ -9,3 +9,6 @@ tools/out/
 # IDE
 .idea/
 *.iml
+
+*.class
+.claude/

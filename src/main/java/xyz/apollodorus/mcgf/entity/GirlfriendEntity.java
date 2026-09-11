@@ -541,10 +541,26 @@ public class GirlfriendEntity extends PathAwareEntity {
 
     @Override
     public boolean damage(ServerWorld world, DamageSource source, float amount) {
-        boolean applied = super.damage(world, source, amount);
+        // 形态二·领域「制空权」：浮空时被箭/三叉戟等投掷物命中，蚀域消解掉大部分来袭伤害，
+        // 让她不再是远程怪的活靶子（形态一另有投掷物墙，不走这条）。
+        float dealt = amount;
+        boolean voided = false;
+        if (isFormTwo() && AbilityManager.hasDomain(this) && isProjectileDamage(source)) {
+            double resist = ConfigManager.get().behavior.form2ProjectileResist;
+            if (resist > 0) { dealt = (float) (amount * (1.0 - Math.min(1.0, resist))); voided = true; }
+        }
+        boolean applied = super.damage(world, source, dealt);
+        if (voided) world.spawnParticles(net.minecraft.particle.ParticleTypes.REVERSE_PORTAL,
+            getX(), getY() + getHeight() * 0.6, getZ(), 12, 0.4, 0.5, 0.4, 0.03);
         // 受到远程攻击（箭/三叉戟等投掷物）时，一形态会在攻击来源方向竖起一道虚质墙挡投掷物（二形态手短、不触发）。
         if (applied && !isFormTwo()) maybeRaiseProjectileWall(world, source);
         return applied;
+    }
+
+    /** True when the hit came from a projectile (arrow / trident / etc.) — used by the form-2 domain resist. */
+    private static boolean isProjectileDamage(DamageSource source) {
+        return source.isIn(net.minecraft.registry.tag.DamageTypeTags.IS_PROJECTILE)
+            || source.getSource() instanceof net.minecraft.entity.projectile.ProjectileEntity;
     }
 
     /**

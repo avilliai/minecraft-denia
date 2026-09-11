@@ -143,10 +143,21 @@ public class ProtectOwnerGoal extends Goal {
                 x -> x instanceof HostileEntity && x.isAlive())) {
             LivingEntity le = (LivingEntity) e;
             if (!canEngage(le, b)) continue;
-            double sq = gf.squaredDistanceTo(e);
+            double sq = threatScore(le);
             if (sq < bestSq) { bestSq = sq; best = le; }
         }
         return best;
+    }
+
+    /**
+     * Selection metric (lower = pick first). Normally just squared distance, but in 形态二·制空权 she
+     * weights 远程怪（骷髅等 {@link net.minecraft.entity.ai.RangedAttackMob}）much higher so she点掉放风筝的射手，
+     * 而不是先追近处的近战怪、任由远程怪从空中把她耗死。
+     */
+    private double threatScore(LivingEntity e) {
+        double sq = gf.squaredDistanceTo(e);
+        if (gf.isFormTwo() && e instanceof net.minecraft.entity.ai.RangedAttackMob) sq *= 0.3;
+        return sq;
     }
 
     private LivingEntity findThreat() {
@@ -178,8 +189,8 @@ public class ProtectOwnerGoal extends Goal {
             LivingEntity le = (LivingEntity) e;
             if (defensiveOnly && (owner == null || ((HostileEntity) e).getTarget() != owner)) continue;
             if (!canEngage(le, b)) continue; // skip mobs she can't see / can't reach
-            // Prefer mobs closest to girlfriend herself (not owner), for better target switching during kiting
-            double sq = gf.squaredDistanceTo(e);
+            // Prefer mobs closest to girlfriend herself (not owner); 形态二再额外优先远程怪(见 threatScore)。
+            double sq = threatScore(le);
             if (sq < bestSq) {
                 bestSq = sq;
                 best = le;

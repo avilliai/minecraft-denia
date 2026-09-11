@@ -60,6 +60,9 @@ public final class PathAssist {
      */
     public boolean tickToward(ServerWorld world, GirlfriendEntity gf, GirlfriendConfig.Behavior b, BlockPos target) {
         if (blocksUsed >= b.pathAssistBlocksMax) return false;
+        if (gf.isFormTwo()) return false;   // 形态二浮空，直接飞过去即可——绝不在空中垒方块搭桥（修 TODO）
+
+
 
         // Near the home base she won't BREAK terrain (no holes for mobs to pour into), but she may still
         // conjure transient void matter to bridge a gap or pillar up — those blocks auto-restore (~60s),

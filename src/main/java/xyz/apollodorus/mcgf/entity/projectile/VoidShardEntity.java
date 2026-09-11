@@ -13,6 +13,7 @@ import net.minecraft.server.world.ServerWorld;
 import net.minecraft.util.hit.BlockHitResult;
 import net.minecraft.util.hit.EntityHitResult;
 import net.minecraft.util.hit.HitResult;
+import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 import xyz.apollodorus.mcgf.block.ModBlocks;
 import xyz.apollodorus.mcgf.entity.GirlfriendEntities;
@@ -27,6 +28,10 @@ import xyz.apollodorus.mcgf.entity.GirlfriendEntities;
 public class VoidShardEntity extends ThrownItemEntity {
     private float shardDamage = 4.0f;
     private boolean slow = false;
+    // 形态二·制空权：追踪目标。让浮空狙击可靠命中(否则慢弹直飞、对会动的远程怪几乎打不中)。
+    private net.minecraft.entity.LivingEntity homingTarget;
+    private double homingStrength = 0.0;   // 每 tick 向目标方向的转向比例(0=不追踪)
+    private int ticksAlive;                 // 追踪弹可能一直追不上 → 到寿命上限自毁，别泄漏
 
     public VoidShardEntity(EntityType<? extends VoidShardEntity> type, World world) {
         super(type, world);
@@ -43,6 +48,12 @@ public class VoidShardEntity extends ThrownItemEntity {
         this.slow = slow;
     }
 
+    /** 开启追踪：飞行途中缓缓修正朝向 {@code target}。{@code strength} 越大转向越猛(建议 0.12~0.25)。 */
+    public void setHoming(net.minecraft.entity.LivingEntity target, double strength) {
+        this.homingTarget = target;
+        this.homingStrength = strength;
+    }
+
     @Override
     protected Item getDefaultItem() {
         return ModBlocks.VOID_BLOCK.asItem();
@@ -50,15 +61,39 @@ public class VoidShardEntity extends ThrownItemEntity {
 
     @Override
     protected double getGravity() {
-        return 0.02; // a gentle arc, flatter than a snowball
+        // 追踪时几乎无视重力(走直线修正)，否则维持原来轻微下坠的弧线。
+        return homingTarget != null ? 0.0 : 0.02;
     }
 
     @Override
     public void tick() {
+        // 追踪修正：把当前速度朝「指向目标、保持原速」的方向做有限插值，再让 super.tick() 推进位置。
+        if (homingTarget != null && homingStrength > 0) {
+            if (!homingTarget.isAlive()) {
+                homingTarget = null;
+            } else {
+                Vec3d cur = getVelocity();
+                double speed = cur.length();
+                if (speed > 1.0e-3) {
+                    Vec3d aim = homingTarget.getEntityPos()
+                        .add(0, homingTarget.getHeight() * 0.5, 0)
+                        .subtract(getEntityPos());
+                    if (aim.lengthSquared() > 1.0e-4) {
+                        Vec3d desired = aim.normalize().multiply(speed);
+                        Vec3d steered = cur.add(desired.subtract(cur).multiply(homingStrength));
+                        // 保持原速大小，只改方向，避免越追越慢/越快。
+                        if (steered.lengthSquared() > 1.0e-6) {
+                            setVelocity(steered.normalize().multiply(speed));
+                        }
+                    }
+                }
+            }
+        }
         super.tick();
         if (getEntityWorld() instanceof ServerWorld sw) {
             sw.spawnParticles(ParticleTypes.PORTAL, getX(), getY(), getZ(), 2, 0.05, 0.05, 0.05, 0.0);
             sw.spawnParticles(ParticleTypes.SOUL_FIRE_FLAME, getX(), getY(), getZ(), 1, 0.02, 0.02, 0.02, 0.0);
+            if (++ticksAlive > 80) discard();   // 追踪弹 4s 未命中即消解，防止绕场追人
         }
     }
 

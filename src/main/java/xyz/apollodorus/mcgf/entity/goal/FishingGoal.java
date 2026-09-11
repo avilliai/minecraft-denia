@@ -184,6 +184,7 @@ public class FishingGoal extends Goal {
     private void reelIn(ServerWorld sw) {
         ItemStack catch_ = rollCatch();
         gf.addToInventory(catch_);
+        xyz.apollodorus.mcgf.ai.MemoryStore.record(gf, "一起在水边钓了会儿鱼，还真钓上来几条。");   // 情景记忆(去重→每次钓鱼记一条)
         sw.spawnParticles(ParticleTypes.SPLASH, water.getX() + 0.5, water.getY() + 1.0, water.getZ() + 0.5,
             12, 0.3, 0.1, 0.3, 0.1);
         gf.swingHand(Hand.MAIN_HAND);

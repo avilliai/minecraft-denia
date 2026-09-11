@@ -171,6 +171,7 @@ public final class ChatBrain {
         String system = cfg.fillName(gf.isFormTwo() ? cfg.llm.systemPromptForm2 : cfg.llm.systemPrompt)
             + "\n\n[环境]\n" + context;
         if (!session.memory.isBlank()) system += "\n\n[关于你和他的记忆]\n" + session.memory;
+        system += episodicBlock(player.getUuid());
         system += recentBlock(gf.getUuid());
 
         JsonArray messages = new JsonArray();
@@ -234,7 +235,7 @@ public final class ChatBrain {
 
         // Fold the conversation into a compact memory once it gets long — done after the reply is
         // already on its way, so the player never waits on the extra summarization round-trip.
-        maybeCompact(session, cfg);
+        maybeCompact(player.getUuid(), session, cfg);
     }
 
     /** A computed-but-not-yet-delivered chat result. {@code finalReply == null} = LLM/network failure. */
@@ -266,6 +267,9 @@ public final class ChatBrain {
             "你的生命：" + (int) gf.getHealth() + "/" + (int) gf.getMaxHealth(),
             "你的坐标：(" + pos.getX() + ", " + pos.getY() + ", " + pos.getZ() + ")，生物群系：" + biome + "，" + daypart,
             "对话玩家「" + player.getName().getString() + "」距你约 " + String.format("%.1f", dist) + " 格",
+            "漂泊者现状：生命 " + (int) player.getHealth() + "/" + (int) player.getMaxHealth()
+                + "，饥饿 " + player.getHungerManager().getFoodLevel() + "/20，手持 " + heldItemName(player)
+                + "，所在 " + dimensionName(player) + "（这些是他的状态，不是你的；关心他但别像播报员念数据）",
             "你的状态：" + (gf.isFollowing() ? "跟随玩家" : "原地待命")
                 + "，正在「" + gf.getActivity() + "」"
                 + "，护卫" + (gf.isCombatEnabled() ? "开" : "关")
@@ -289,6 +293,18 @@ public final class ChatBrain {
     private static String heldItemName(GirlfriendEntity gf) {
         ItemStack main = gf.getEquippedStack(EquipmentSlot.MAINHAND);
         return main.isEmpty() ? "空手" : WorkUtil.displayName(main.getItem());
+    }
+
+    private static String heldItemName(ServerPlayerEntity player) {
+        ItemStack main = player.getMainHandStack();
+        return main.isEmpty() ? "空手" : WorkUtil.displayName(main.getItem());
+    }
+
+    /** 玩家当前所在维度的中文短名，供上下文里她自然贴合此刻(下界/末地/主世界)。 */
+    private static String dimensionName(ServerPlayerEntity player) {
+        var key = player.getEntityWorld().getRegistryKey();
+        return key == net.minecraft.world.World.NETHER ? "下界"
+            : key == net.minecraft.world.World.END ? "末地" : "主世界";
     }
 
     private static String inventorySummary(GirlfriendEntity gf) {
@@ -339,6 +355,7 @@ public final class ChatBrain {
         String context = buildContext(gf, sp);
         final String memory = session(sp.getUuid()).memory;
         final UUID gfId = gf.getUuid();
+        final UUID ownerId = sp.getUuid();
         GirlfriendConfig cfg = ConfigManager.get();
         final boolean formTwo = gf.isFormTwo();
         executor.submit(() -> {
@@ -346,6 +363,7 @@ public final class ChatBrain {
                 String system = cfg.fillName(formTwo ? cfg.llm.ephemeralSystemForm2 : cfg.llm.ephemeralSystem)
                     + "\n\n[环境]\n" + context;
                 if (!memory.isBlank()) system += "\n\n[关于你和他的记忆]\n" + memory;
+                system += episodicBlock(ownerId);
                 system += recentBlock(gfId);
                 system += "\n\n[此刻]\n" + situation;
                 JsonArray messages = new JsonArray();
@@ -416,7 +434,25 @@ public final class ChatBrain {
     // --- helpers ---
 
     private Session session(UUID id) {
-        return sessions.computeIfAbsent(id, k -> new Session());
+        return sessions.computeIfAbsent(id, k -> {
+            Session s = new Session();
+            s.memory = MemoryStore.getMemory(k);   // 载入该玩家的持久化长期记忆（游戏重启不忘）
+            return s;
+        });
+    }
+
+    /**
+     * A "你们一起经历过的事" block built from the persistent episodic memory — the main lever for 活人感/记忆:
+     * she can naturally bring up shared experiences (一起钓鱼、挖到钻石、去过下界、你死过一次…). Empty if none yet.
+     */
+    private static String episodicBlock(UUID ownerId) {
+        List<String> eps = MemoryStore.episodes(ownerId);
+        if (eps.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder(
+            "\n\n[你们一起经历过的事——都是真发生过的，可以像老朋友那样偶尔自然提一句，但别一次性倒完、也别每句都提]\n");
+        int start = Math.max(0, eps.size() - 10);   // 只取最近 10 条，控制 prompt 体积
+        for (int i = start; i < eps.size(); i++) sb.append("- ").append(eps.get(i)).append('\n');
+        return sb.toString();
     }
 
     /** Append one finished exchange to both the request window and the memory backlog. */
@@ -437,7 +473,7 @@ public final class ChatBrain {
      * compaction (plus the prior memory) into a compact memory string and reset the counter.
      * On a summarizer failure we keep the counter high so it retries on the next round.
      */
-    private void maybeCompact(Session s, GirlfriendConfig cfg) {
+    private void maybeCompact(UUID ownerId, Session s, GirlfriendConfig cfg) {
         int threshold = Math.max(4, cfg.llm.compressAfterRounds);
         if (s.rounds < threshold || s.sinceCompaction.isEmpty()) return;
         String summary = summarize(s, cfg);
@@ -449,6 +485,7 @@ public final class ChatBrain {
         s.memory = summary.length() > cap ? summary.substring(0, cap) : summary;
         s.sinceCompaction.clear();
         s.rounds = 0;
+        MemoryStore.setMemory(ownerId, s.memory);   // 落盘：长期记忆持久化，重启不忘
         LOGGER.info("[mcgf] compacted conversation memory -> {} chars", s.memory.length());
     }
 
