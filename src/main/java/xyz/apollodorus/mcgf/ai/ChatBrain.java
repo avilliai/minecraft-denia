@@ -278,6 +278,7 @@ public final class ChatBrain {
             "附近敌对生物：" + (hostiles > 0 ? hostiles + " 只（注意保护玩家）" : "无"),
             "你手上拿着：" + heldItemName(gf) + "（采集/挖矿时会自动换上你背包里最好的工具）",
             "你的背包：" + inventorySummary(gf),
+            xyz.apollodorus.mcgf.entity.work.ItemAppraiser.summarizeInventory(gf),
             "玩家想要的东西（遇到就收）：" + needsSummary(gf),
             "你对玩家的好感度：" + gf.getAffection() + "/100（" + gf.affectionTier() + "）"
                 + "——好感越高越黏人、越主动撒娇亲近；偏低则更慵懒、带点试探的小距离。请让此刻语气贴合这个亲密度。"

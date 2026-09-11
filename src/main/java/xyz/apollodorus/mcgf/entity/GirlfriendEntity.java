@@ -512,20 +512,49 @@ public class GirlfriendEntity extends PathAwareEntity {
     }
 
     /** Auto-wear armor from the backpack and keep a totem in the off-hand. */
+        public int evaluateAndEquipBest() {
+        gearUp();
+        return 1;
+    }
+
     private void gearUp() {
-        for (int i = 0; i < inventory.size(); i++) {
-            ItemStack s = inventory.getStack(i);
-            if (s.isEmpty()) continue;
-            if (s.isOf(Items.TOTEM_OF_UNDYING) && getEquippedStack(EquipmentSlot.OFFHAND).isEmpty()) {
-                equipStack(EquipmentSlot.OFFHAND, inventory.removeStack(i, 1));
-                continue;
+        // 先检测副手不死图腾
+        if (getEquippedStack(EquipmentSlot.OFFHAND).isEmpty()) {
+            for (int i = 0; i < inventory.size(); i++) {
+                ItemStack s = inventory.getStack(i);
+                if (!s.isEmpty() && s.isOf(Items.TOTEM_OF_UNDYING)) {
+                    equipStack(EquipmentSlot.OFFHAND, inventory.removeStack(i, 1));
+                    break;
+                }
             }
-            EquippableComponent eq = s.get(DataComponentTypes.EQUIPPABLE);
-            if (eq == null) continue;
-            EquipmentSlot slot = eq.slot();
-            if (!isWearableArmorSlot(slot)) continue;
-            if (getEquippedStack(slot).isEmpty()) {
-                equipStack(slot, inventory.removeStack(i, 1));
+        }
+
+        // 智能装备护甲：比较数值，若背包中有更好的防具则自动换上更好的
+        for (EquipmentSlot slot : new EquipmentSlot[]{EquipmentSlot.HEAD, EquipmentSlot.CHEST, EquipmentSlot.LEGS, EquipmentSlot.FEET}) {
+            ItemStack current = getEquippedStack(slot);
+            double curScore = xyz.apollodorus.mcgf.entity.work.ItemAppraiser.evaluateItemScore(current);
+            int bestIdx = -1;
+            double bestScore = curScore;
+
+            for (int i = 0; i < inventory.size(); i++) {
+                ItemStack invStack = inventory.getStack(i);
+                if (invStack.isEmpty()) continue;
+                EquippableComponent eq = invStack.get(DataComponentTypes.EQUIPPABLE);
+                if (eq != null && eq.slot() == slot) {
+                    double s = xyz.apollodorus.mcgf.entity.work.ItemAppraiser.evaluateItemScore(invStack);
+                    if (s > bestScore) {
+                        bestScore = s;
+                        bestIdx = i;
+                    }
+                }
+            }
+
+            if (bestIdx != -1) {
+                ItemStack upgrade = inventory.removeStack(bestIdx, 1);
+                if (!current.isEmpty()) {
+                    inventory.addStack(current);
+                }
+                equipStack(slot, upgrade);
             }
         }
     }
@@ -541,6 +570,12 @@ public class GirlfriendEntity extends PathAwareEntity {
 
     @Override
     public boolean damage(ServerWorld world, DamageSource source, float amount) {
+        // ????????????/??????????????????????
+        if (source.getAttacker() instanceof net.minecraft.entity.LivingEntity attacker) {
+            if (xyz.apollodorus.mcgf.combat.DaniyaCombatEngine.tryExtremeDodge(this, attacker)) {
+                return false; // ?????????
+            }
+        }
         // 形态二·领域「制空权」：浮空时被箭/三叉戟等投掷物命中，蚀域消解掉大部分来袭伤害，
         // 让她不再是远程怪的活靶子（形态一另有投掷物墙，不走这条）。
         float dealt = amount;

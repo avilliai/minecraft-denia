@@ -270,6 +270,7 @@ public final class WorkUtil {
             int taken = before - (remainder.isEmpty() ? 0 : remainder.getCount());
             if (taken <= 0) continue;
             gf.noteCollected(st.getItem(), taken);
+            ItemAppraiser.reactToAcquisition(gf, st.copyWithCount(taken));
             total += taken;
             if (remainder.isEmpty()) ie.discard();
             else ie.setStack(remainder);

@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import net.minecraft.block.BlockState;
 import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.particle.ParticleTypes;
 import net.minecraft.registry.tag.FluidTags;
@@ -20,6 +21,9 @@ import xyz.apollodorus.mcgf.entity.GirlfriendEntity.Task;
 import xyz.apollodorus.mcgf.entity.goal.WorkGoal;
 import xyz.apollodorus.mcgf.entity.work.BoatUtil;
 import xyz.apollodorus.mcgf.entity.work.CraftUtil;
+import xyz.apollodorus.mcgf.entity.work.ActionExecutor;
+import xyz.apollodorus.mcgf.entity.work.ContainerInteractUtil;
+import xyz.apollodorus.mcgf.entity.work.ItemAppraiser;
 import xyz.apollodorus.mcgf.entity.work.WorkUtil;
 
 import java.util.function.Predicate;
@@ -63,6 +67,39 @@ public final class Tools {
             itemOnlyParams("不想再采的物品名（中/英），如 铜、铜矿、橡木")));
         arr.add(fn("allow_item", "玩家说「又可以采集某样东西了」时使用：把它移出采集黑名单。",
             itemOnlyParams("重新允许采集的物品名（中/英）")));
+                // --- New Daniya Agent Gameplay & Interaction Tools ---
+        JsonObject useItemProps = new JsonObject();
+        useItemProps.add("item", prop("string", "?????????? ??, ??, ???, ???, ????"));
+        arr.add(fn("use_item", "???????????????????????", object(useItemProps)));
+
+        JsonObject pillarProps = new JsonObject();
+        pillarProps.add("height", prop("integer", "??????????1-5?"));
+        arr.add(fn("build_pillar", "?????????????????????????????", object(pillarProps)));
+
+        JsonObject placeProps = new JsonObject();
+        placeProps.add("item", prop("string", "?????????? ??, ??, ???, ??"));
+        placeProps.add("x", prop("integer", "??X??????????????"));
+        placeProps.add("y", prop("integer", "??Y??????"));
+        placeProps.add("z", prop("integer", "??Z??????"));
+        arr.add(fn("place_block", "?????????????????????????", object(placeProps)));
+
+        JsonObject shelterProps = new JsonObject();
+        shelterProps.add("danger", prop("string", "?????? ???, ????, ???"));
+        arr.add(fn("emergency_shelter", "??????????????????????????", object(shelterProps)));
+
+        JsonObject chestProps = new JsonObject();
+        chestProps.add("action", prop("string", "?????deposit(?????????), withdraw(??????), loot_all(??????????)"));
+        chestProps.add("item", prop("string", "????withdraw??????"));
+        chestProps.add("count", prop("integer", "???????1"));
+        arr.add(fn("interact_chest", "?????????????", object(chestProps)));
+
+        JsonObject smeltProps = new JsonObject();
+        smeltProps.add("item", prop("string", "????????????? ??, ???, ????"));
+        smeltProps.add("count", prop("integer", "???????1"));
+        arr.add(fn("interact_furnace", "???????????????????????", object(smeltProps)));
+
+        arr.add(fn("evaluate_inventory", "????????????????????????????????????????", emptyParams()));
+
         return arr;
     }
 
@@ -151,6 +188,79 @@ public final class Tools {
                     Item item = WorkUtil.resolveItem(str(args, "item"));
                     if (item == null) return err("不认识这个物品");
                     return "{\"ok\":true,\"wasAvoided\":" + gf.removeGatherBlacklist(item) + "}";
+                }
+                                case "use_item": {
+                    Item item = WorkUtil.resolveItem(str(args, "item"));
+                    if (item == null) return err("???????");
+                    boolean success = ActionExecutor.useItem(gf, item);
+                    return "{\"ok\":" + success + "}";
+                }
+                case "build_pillar": {
+                    int height = args != null && args.has("height") ? args.get("height").getAsInt() : 1;
+                    boolean success = ActionExecutor.scaffoldPillar(gf, height);
+                    return "{\"ok\":" + success + "}";
+                }
+                case "place_block": {
+                    String itemName = str(args, "item");
+                    Item item = WorkUtil.resolveItem(itemName);
+                    if (item == null) return err("???????");
+                    net.minecraft.util.math.BlockPos p;
+                    if (args != null && args.has("x") && args.has("y") && args.has("z")) {
+                        p = new net.minecraft.util.math.BlockPos(
+                            args.get("x").getAsInt(), args.get("y").getAsInt(), args.get("z").getAsInt());
+                    } else {
+                        p = gf.getBlockPos().offset(gf.getHorizontalFacing());
+                    }
+                    boolean success = ActionExecutor.placeBlockAt(gf, p, item);
+                    return "{\"ok\":" + success + "}";
+                }
+                case "emergency_shelter": {
+                    boolean success = ActionExecutor.buildSimpleShelter(gf);
+                    return "{\"ok\":" + success + "}";
+                }
+                case "interact_chest": {
+                    if (gf.getEntityWorld() instanceof ServerWorld sw) {
+                        java.util.List<net.minecraft.util.math.BlockPos> containers = ContainerInteractUtil.findNearbyContainers(sw, gf.getBlockPos(), 6);
+                        if (containers.isEmpty()) return err("???????????");
+                        net.minecraft.util.math.BlockPos cPos = containers.get(0);
+                        String action = str(args, "action");
+                        if ("withdraw".equalsIgnoreCase(action)) {
+                            String it = str(args, "item");
+                            Item item = WorkUtil.resolveItem(it);
+                            if (item == null) return err("???????");
+                            int cnt = args != null && args.has("count") ? args.get("count").getAsInt() : 1;
+                            int taken = ContainerInteractUtil.takeItemFromContainer(sw, cPos, gf, item, cnt);
+                            return "{\"ok\":true,\"taken\":" + taken + "}";
+                        } else {
+                            String it = str(args, "item");
+                            Item item = it != null ? WorkUtil.resolveItem(it) : null;
+                            int cnt = args != null && args.has("count") ? args.get("count").getAsInt() : 64;
+                            int dep = ContainerInteractUtil.depositItemToContainer(sw, cPos, gf, item, cnt);
+                            return "{\"ok\":true,\"deposited\":" + dep + "}";
+                        }
+                    }
+                    return err("??????");
+                }
+                case "interact_furnace": {
+                    if (gf.getEntityWorld() instanceof ServerWorld sw) {
+                        java.util.List<net.minecraft.util.math.BlockPos> furnaces = ContainerInteractUtil.findNearbyFurnaces(sw, gf.getBlockPos(), 6);
+                        if (furnaces.isEmpty()) return err("????????");
+                        String res = ContainerInteractUtil.interactWithFurnace(sw, furnaces.get(0), gf);
+                        return "{\"ok\":true,\"result\":\"" + res.replace('"', ' ') + "\"}";
+                    }
+                    return err("??????");
+                }
+                case "evaluate_inventory": {
+                    int upgraded = gf.evaluateAndEquipBest();
+                    StringBuilder sb = new StringBuilder();
+                    for (int i = 0; i < gf.getInventory().size(); i++) {
+                        ItemStack s = gf.getInventory().getStack(i);
+                        if (!s.isEmpty()) {
+                            ItemAppraiser.Evaluation ev = ItemAppraiser.evaluate(s, gf);
+                            sb.append(s.getName().getString()).append('(').append(ev.daniyaComment()).append("); ");
+                        }
+                    }
+                    return "{\"ok\":true,\"upgradedEquipments\":" + upgraded + ",\"evaluations\":\"" + sb.toString().replace('"', ' ') + "\"}";
                 }
                 default:
                     return "{\"ok\":false,\"error\":\"unknown tool\"}";

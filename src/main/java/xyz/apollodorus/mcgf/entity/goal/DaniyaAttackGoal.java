@@ -7,6 +7,7 @@ import net.minecraft.util.Hand;
 import net.minecraft.util.math.Vec3d;
 import xyz.apollodorus.mcgf.combat.BubbleAbilities;
 import xyz.apollodorus.mcgf.combat.DaniyaAbilities;
+import xyz.apollodorus.mcgf.combat.DaniyaCombatEngine;
 import xyz.apollodorus.mcgf.config.ConfigManager;
 import xyz.apollodorus.mcgf.config.GirlfriendConfig;
 import xyz.apollodorus.mcgf.entity.GirlfriendEntity;
@@ -144,6 +145,12 @@ public class DaniyaAttackGoal extends Goal {
         if (rangedCd > 0) { rangedCd--; return; }
         if (canAttack && dist <= maxRange && canSee) {
             rangedCd = Math.max(10, b.rangedIntervalTicks);
+            // ?????????????????????? / ?????
+            if (gf.getRandom().nextFloat() < 0.35f && DaniyaCombatEngine.tryCastResonanceSkill(sw, gf, target)) {
+                gf.gainEnergy((int)(b.energyPerHit * 1.5));
+                idleAttackTicks = 0;
+                return;
+            }
             gf.swingHand(Hand.MAIN_HAND);
             castCombo(sw, formTwo);
             comboStep = (comboStep + 1) % 4;
