@@ -9,6 +9,9 @@ import xyz.apollodorus.mcgf.combat.BubbleAbilities;
 import xyz.apollodorus.mcgf.combat.DaniyaAbilities;
 import xyz.apollodorus.mcgf.combat.DaniyaCombatEngine;
 import xyz.apollodorus.mcgf.config.ConfigManager;
+import xyz.apollodorus.mcgf.entity.work.ItemAppraiser;
+import net.minecraft.entity.EquipmentSlot;
+import net.minecraft.item.ItemStack;
 import xyz.apollodorus.mcgf.config.GirlfriendConfig;
 import xyz.apollodorus.mcgf.entity.GirlfriendEntity;
 
@@ -305,9 +308,53 @@ public class DaniyaAttackGoal extends Goal {
         }
     }
 
-    /** 形态一握专武泡泡杖；形态二空手。 */
+    /** 智能适应形态与武器装备：
+     *  - 形态二：空手释放蚀域湮灭技能与虚质撕裂
+     *  - 形态一：智能评估主手与背包，若玩家给了强力神兵、现代枪械（TACZ/PointBlank/CGM等）或极品附魔武器，优先使用；无更强武器时默认使用专武泡泡法杖！
+     */
     private void equipForForm(boolean formTwo) {
-        if (formTwo) gf.emptyMainHand();
-        else gf.equipSignatureWeapon();
+        if (formTwo) {
+            gf.emptyMainHand();
+            return;
+        }
+
+        // 评估背包中是否有枪械或更高评分的模组武器
+        ItemStack current = gf.getEquippedStack(EquipmentSlot.MAINHAND);
+        int currentScore = current.isEmpty() ? -1 : ItemAppraiser.evaluate(current, gf).score();
+        
+        int bestSlot = -1;
+        int bestScore = currentScore;
+        boolean currentIsGun = !current.isEmpty() && ItemAppraiser.isFirearmLike(net.minecraft.registry.Registries.ITEM.getId(current.getItem()).getPath());
+
+        for (int i = 0; i < gf.getInventory().size(); i++) {
+            ItemStack stack = gf.getInventory().getStack(i);
+            if (stack.isEmpty()) continue;
+            var eval = ItemAppraiser.evaluate(stack, gf);
+            boolean isGun = ItemAppraiser.isFirearmLike(net.minecraft.registry.Registries.ITEM.getId(stack.getItem()).getPath());
+
+            // 枪械武器优先赋能，或者评分显著高于当前手持武器 (+15 分)
+            if (isGun && !currentIsGun) {
+                bestSlot = i;
+                bestScore = eval.score() + 50; // 枪械偏好加权
+                break;
+            } else if (eval.score() > bestScore + 15) {
+                bestScore = eval.score();
+                bestSlot = i;
+            }
+        }
+
+        if (bestSlot != -1) {
+            ItemStack chosen = gf.getInventory().removeStack(bestSlot);
+            if (!current.isEmpty()) {
+                gf.getInventory().addStack(current);
+            }
+            gf.equipStack(EquipmentSlot.MAINHAND, chosen);
+            return;
+        }
+
+        // 若当前未持有优秀模组武器，确保装备泡泡法杖专武
+        if (current.isEmpty()) {
+            gf.equipSignatureWeapon();
+        }
     }
 }

@@ -103,7 +103,11 @@ public final class ChatBrain {
         }
         LOGGER.info("[mcgf] <- {}: {}", player.getName().getString(), message);
         if (startWorker) {
-            getExecutor().submit(() -> runInbox(server, gf, player, id, inbox));
+            try {
+                getExecutor().submit(() -> runInbox(server, gf, player, id, inbox));
+            } catch (java.util.concurrent.RejectedExecutionException ignored) {
+                synchronized (inbox) { inbox.running = false; }
+            }
         }
     }
 
@@ -370,8 +374,9 @@ public final class ChatBrain {
         final UUID ownerId = sp.getUuid();
         GirlfriendConfig cfg = ConfigManager.get();
         final boolean formTwo = gf.isFormTwo();
-        getExecutor().submit(() -> {
-            try {
+        try {
+            getExecutor().submit(() -> {
+                try {
                 String system = cfg.fillName(formTwo ? cfg.llm.ephemeralSystemForm2 : cfg.llm.ephemeralSystem)
                     + "\n\n[环境]\n" + context;
                 if (!memory.isBlank()) system += "\n\n[关于你和他的记忆]\n" + memory;
@@ -395,6 +400,10 @@ public final class ChatBrain {
             }
         });
         return true;
+        } catch (java.util.concurrent.RejectedExecutionException rej) {
+            proactivePending.remove(key);
+            return false;
+        }
     }
 
     /** Proactive lines are always one short spoken utterance — never a chat burst. */

@@ -26,6 +26,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Predicate;
+import net.minecraft.util.hit.BlockHitResult;
+import net.minecraft.util.hit.HitResult;
+import net.minecraft.world.RaycastContext;
+import net.minecraft.util.math.Vec3d;
 
 /**
  * Stateless helpers shared by the work goals: classifying blocks, scanning the
@@ -70,10 +74,51 @@ public final class WorkUtil {
      * blocks return false so she never X-ray-mines ore through stone — if she
      * can't see it, she leaves it alone (imperfect on purpose).
      */
+    /**
+     * 真实反矿透视线与空间暴露检验（Anti-X-Ray）：
+     * 1. 目标方块必须至少有一面暴露在真实空气/非实心空间中；
+     * 2. 如果提供了观察者（达妮娅），从达妮娅眼睛向该暴露面进行视线 Raycast 检测，
+     *    中间必须没有实心不透明方块遮挡，杜绝隔着大山看透矿石的“矿透外挂”行为！
+     */
     public static boolean isExposed(World world, BlockPos pos) {
         for (Direction d : Direction.values()) {
             BlockState n = world.getBlockState(pos.offset(d));
             if (n.isAir() || n.isReplaceable()) return true;
+        }
+        return false;
+    }
+
+    public static boolean isTrulyVisibleOrExposed(World world, Vec3d eyes, BlockPos targetPos) {
+        // 先检查是否有暴露在空气中的面
+        Direction exposedDir = null;
+        for (Direction dir : Direction.values()) {
+            BlockPos side = targetPos.offset(dir);
+            BlockState sideState = world.getBlockState(side);
+            if (sideState.isAir() || sideState.isReplaceable()) {
+                exposedDir = dir;
+                break;
+            }
+        }
+        if (exposedDir == null) return false; // 没有任何暴露面，属于实心岩体深处，拒绝矿透！
+
+        // 从视线向该暴露面中心投射射线
+        Vec3d targetCenter = Vec3d.ofCenter(targetPos).add(
+            exposedDir.getOffsetX() * 0.45,
+            exposedDir.getOffsetY() * 0.45,
+            exposedDir.getOffsetZ() * 0.45
+        );
+        RaycastContext ctx = new RaycastContext(
+            eyes,
+            targetCenter,
+            RaycastContext.ShapeType.COLLIDER,
+            RaycastContext.FluidHandling.NONE,
+            (net.minecraft.entity.Entity) null
+        );
+        HitResult hit = world.raycast(ctx);
+        if (hit == null || hit.getType() == HitResult.Type.MISS) return true;
+        if (hit.getType() == HitResult.Type.BLOCK && hit instanceof BlockHitResult bhr) {
+            BlockPos hitPos = bhr.getBlockPos();
+            return hitPos.equals(targetPos) || hitPos.equals(targetPos.offset(exposedDir));
         }
         return false;
     }

@@ -1,31 +1,37 @@
 {
-	"schemaVersion": 1,
-	"id": "mcgf",
-	"version": "${version}",
-	"name": "Denia",
-	"description": "由 LLM 驱动的 Minecraft 伴随实体「达妮娅」：会撒娇、挖矿、收菜、战斗护卫、陪你探索，支持 GPT-SoVITS 语音。",
-	"authors": [
-		"avilliai"
-	],
-	"contact": {
-		"homepage": "http://apollodorus.xyz"
-	},
-	"license": "MIT",
-	"icon": "assets/mcgf/icon.png",
-	"environment": "*",
-	"entrypoints": {
-		"main": [
-			"xyz.apollodorus.mcgf.MCGirlfriendMod"
-		],
-		"client": [
-			"xyz.apollodorus.mcgf.client.MCGirlfriendClient"
-		]
-	},
-	"depends": {
-		"fabricloader": ">=0.16",
-		"minecraft": "~1.21.11",
-		"java": ">=21",
-		"fabric-api": "*"
-	},
-	"suggests": {}
+  "schemaVersion": 1,
+  "id": "mcgf",
+  "version": "${version}",
+  "name": "Denia",
+  "description": "由 LLM 驱动的 Minecraft 伴随实体「达妮娅」：会撒娇、挖矿、收菜、战斗护卫、陪你探索，支持 GPT-SoVITS 语音。",
+  "authors": [
+    "avilliai"
+  ],
+  "contact": {
+    "homepage": "http://apollodorus.xyz"
+  },
+  "license": "MIT",
+  "icon": "assets/mcgf/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "xyz.apollodorus.mcgf.MCGirlfriendMod"
+    ],
+    "client": [
+      "xyz.apollodorus.mcgf.client.MCGirlfriendClient"
+    ]
+  },
+  "depends": {
+    "fabricloader": ">=0.16",
+    "minecraft": "~1.21.11",
+    "java": ">=21",
+    "fabric-api": "*"
+  },
+  "suggests": {},
+  "mixins": [
+    {
+      "config": "mcgf.client.mixins.json",
+      "environment": "client"
+    }
+  ]
 }

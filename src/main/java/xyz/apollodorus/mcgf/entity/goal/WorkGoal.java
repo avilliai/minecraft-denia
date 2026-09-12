@@ -21,6 +21,7 @@ import xyz.apollodorus.mcgf.config.GirlfriendConfig;
 import xyz.apollodorus.mcgf.entity.GirlfriendEntity;
 import xyz.apollodorus.mcgf.entity.GirlfriendEntity.Task;
 import xyz.apollodorus.mcgf.entity.work.WorkUtil;
+import xyz.apollodorus.mcgf.entity.work.SmeltUtil;
 
 import java.util.EnumSet;
 import java.util.HashMap;
@@ -168,14 +169,23 @@ public class WorkGoal extends Goal {
 
         if (distSq > REACH_SQ) {
             resetMining(sw); // walked off → drop any half-dug progress
-            if (--repathCd <= 0) {
-                repathCd = 10;
-                boolean ok = gf.getNavigation().startMovingTo(center.x, center.y, center.z,
-                    ConfigManager.get().behavior.moveSpeed);
-                if (!ok) { blacklist(now, target); target = null; return; } // unreachable → ignore
+            // 阶梯挖掘防卡头前置检测：如果在行进路上被头顶或面前方块卡住，优先挖掘清空头顶保护格
+            BlockPos obstruction = findHeadClearingBlock(sw, target);
+            if (obstruction != null && gf.getBlockPos().isWithinDistance(obstruction, 4.0)) {
+                // 暂时将挖掘目标切换为卡头方块，清除路障
+                target = obstruction;
+                center = Vec3d.ofCenter(target);
+                gf.getLookControl().lookAt(center);
+            } else {
+                if (--repathCd <= 0) {
+                    repathCd = 10;
+                    boolean ok = gf.getNavigation().startMovingTo(center.x, center.y, center.z,
+                        ConfigManager.get().behavior.moveSpeed);
+                    if (!ok) { blacklist(now, target); target = null; return; } // unreachable → ignore
+                }
+                if (++stuckTicks > 140) { blacklist(now, target); target = null; } // keeps failing → give up
+                return;
             }
-            if (++stuckTicks > 140) { blacklist(now, target); target = null; } // keeps failing → give up
-            return;
         }
 
         gf.getNavigation().stop();
@@ -240,6 +250,10 @@ public class WorkGoal extends Goal {
 
         if (active != null && active.kind != Task.Kind.HARVEST) {
             active.remaining--;
+            // 自动烧炼检查：如果当前开采完成，且目标是烧炼产物（例如铁锭），自动将背包粗矿烧炼
+            if (active.kind == Task.Kind.OBTAIN && active.item != null && SmeltUtil.isSmeltableResult(active.item)) {
+                SmeltUtil.trySmeltInInventory(gf, active.item);
+            }
             if (active.remaining <= 0) finishActive(doneMessage(active));
         }
     }
@@ -294,10 +308,16 @@ public class WorkGoal extends Goal {
             BlockPos p = WorkUtil.findNearestBlock(world, gf.getBlockPos(), radius, pred, exclude);
             if (p == null) return null;
             BlockState st = world.getBlockState(p);
-            if (WorkUtil.isOre(st) && !WorkUtil.isExposed(world, p)) { // no X-ray digging through walls
-                exclude.add(p);
-                blacklist(world.getTime(), p);
-                continue;
+            if (WorkUtil.isOre(st)) {
+                // 严格反矿透：不仅要求有空气面暴露，还要求不隔着大山看透
+                // 如果矿石不在视线范围内或未暴露，则必须像真人一样忽略它，杜绝穿墙矿透！
+                boolean exposed = WorkUtil.isExposed(world, p);
+                boolean visible = WorkUtil.isTrulyVisibleOrExposed(world, gf.getEyePos(), p);
+                if (!exposed || !visible) {
+                    exclude.add(p);
+                    blacklist(world.getTime(), p);
+                    continue;
+                }
             }
             return p;
         }
@@ -337,6 +357,14 @@ public class WorkGoal extends Goal {
     private static Predicate<BlockState> predicateForItem(Item item) {
         if (item == null) return null;
         Set<Block> ores = ORE_SOURCES.get(item);
+        // 递归配方链探测：如果目标物品是烧炼产物（如铁锭由粗铁/铁矿烧炼而成），优先寻找原料矿石
+        if (SmeltUtil.isSmeltableResult(item)) {
+            Item rawSource = SmeltUtil.getRawSourceFor(item);
+            if (rawSource != null && ORE_SOURCES.containsKey(rawSource)) {
+                Set<Block> rawOres = ORE_SOURCES.get(rawSource);
+                return st -> rawOres.contains(st.getBlock());
+            }
+        }
         if (ores != null) {
             boolean crop = item == Items.WHEAT || item == Items.CARROT || item == Items.POTATO || item == Items.BEETROOT;
             return crop
@@ -452,4 +480,39 @@ public class WorkGoal extends Goal {
             }
         }
     }
+
+    /**
+     * 阶梯式与防窒息挖掘预处理（Safe Staircase Excavation）：
+     * 向上挖掘或向前掘进时：必须开辟面前垂直 3 格（脚下、腰部、头部）以及自己头顶上方 1 格，
+     * 确保 2 格高的达妮娅在上下阶梯推进时绝对不会发生方块塞头卡顿或窒息！
+     * 向下挖掘时：必须先破除身体站立空间，绝对禁止直接垂直下挖自己脚下方块。
+     */
+    private BlockPos findHeadClearingBlock(ServerWorld sw, BlockPos tPos) {
+        BlockPos gfPos = gf.getBlockPos();
+        // 1. 先检查达妮娅自己头顶是否被方块压顶（卡头）
+        BlockPos headPos = gfPos.up(2);
+        BlockState headState = sw.getBlockState(headPos);
+        if (!headState.isAir() && headState.isOpaqueFullCube()) {
+            return headPos;
+        }
+
+        // 2. 如果目标矿石或方块位于高处（向上掘进阶梯），检查前进路径垂直空间
+        if (tPos.getY() > gfPos.getY()) {
+            // 向上阶梯：检查面前这一格从 y 到 y+2 的空间
+            int dx = Integer.compare(tPos.getX(), gfPos.getX());
+            int dz = Integer.compare(tPos.getZ(), gfPos.getZ());
+            BlockPos stepFoot = gfPos.add(dx, 0, dz);
+            BlockPos stepBody = gfPos.add(dx, 1, dz);
+            BlockPos stepHead = gfPos.add(dx, 2, dz);
+
+            // 优先清除挡路的头部空间，防止撞头卡住
+            if (!sw.getBlockState(stepHead).isAir() && sw.getBlockState(stepHead).isOpaqueFullCube()) return stepHead;
+            if (!sw.getBlockState(stepBody).isAir() && sw.getBlockState(stepBody).isOpaqueFullCube() && !stepBody.equals(tPos)) return stepBody;
+        } else if (tPos.getY() < gfPos.getY() && tPos.getX() == gfPos.getX() && tPos.getZ() == gfPos.getZ()) {
+            // 向下挖掘防自陷：禁止直接挖正脚下方块，先稍微往旁边挪一步或侧向挖掘
+            return null;
+        }
+        return null;
+    }
+
 }

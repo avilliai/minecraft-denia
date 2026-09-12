@@ -1,0 +1,12 @@
+﻿{
+  "required": true,
+  "package": "xyz.apollodorus.mcgf.client.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "ClientPlayNetworkHandlerMixin",
+    "ScreenHandlerMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

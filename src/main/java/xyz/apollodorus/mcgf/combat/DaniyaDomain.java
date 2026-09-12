@@ -226,75 +226,69 @@ public final class DaniyaDomain {
      * ???????????????????????????????
      */
     private void drawResonanceRuneCircle(long elapsed) {
-        double innerSpin = elapsed * 0.08;
-        double outerSpin = -elapsed * 0.04;
-        DustParticleEffect cyanDust = new DustParticleEffect(0x5BC8FF, 1.4f);
-        DustParticleEffect purpleDust = new DustParticleEffect(PURPLE, 1.5f);
-        DustParticleEffect deepBlueDust = new DustParticleEffect(DEEP_BLUE, 1.8f);
+        // ???????????????????????????????????????????
+        double innerSpin = elapsed * 0.05;
+        double outerSpin = -elapsed * 0.025;
+        DustParticleEffect cyanDust = new DustParticleEffect(0x5BC8FF, 0.75f);
+        DustParticleEffect purpleDust = new DustParticleEffect(PURPLE, 0.8f);
+        DustParticleEffect deepBlueDust = new DustParticleEffect(DEEP_BLUE, 0.85f);
 
-        // ?????? (Outer Boundary Ring)
-        int outerPoints = 36;
+        // ??????? (Outer Boundary Ring) - ??0.03??????
+        int outerPoints = 24;
         for (int i = 0; i < outerPoints; i++) {
             double a = outerSpin + (Math.PI * 2 / outerPoints) * i;
             double px = centerVec.x + Math.cos(a) * radius;
             double pz = centerVec.z + Math.sin(a) * radius;
-            world.spawnParticles(deepBlueDust, px, centerVec.y + 0.12, pz, 1, 0.02, 0.02, 0.02, 0.0);
+            world.spawnParticles(deepBlueDust, px, centerVec.y + 0.03, pz, 1, 0.0, 0.0, 0.0, 0.0);
             if (i % 6 == 0) {
-                world.spawnParticles(purpleDust, px, centerVec.y + 0.25, pz, 1, 0.03, 0.15, 0.03, 0.0);
-                world.spawnParticles(ParticleTypes.WARPED_SPORE, px, centerVec.y + 0.3, pz, 1, 0.05, 0.2, 0.05, 0.02);
+                world.spawnParticles(purpleDust, px, centerVec.y + 0.05, pz, 1, 0.0, 0.0, 0.0, 0.0);
             }
         }
 
-        // ??????? (Middle Melody Ring - ?? 0.65)
-        int midPoints = 24;
-        double midR = radius * 0.65;
-        for (int i = 0; i < midPoints; i++) {
-            double a = innerSpin + (Math.PI * 2 / midPoints) * i;
-            double px = centerVec.x + Math.cos(a) * midR;
-            double pz = centerVec.z + Math.sin(a) * midR;
-            world.spawnParticles(purpleDust, px, centerVec.y + 0.1, pz, 1, 0.02, 0.02, 0.02, 0.0);
-            if (i % 4 == 0) {
-                world.spawnParticles(cyanDust, px, centerVec.y + 0.18, pz, 1, 0.02, 0.05, 0.02, 0.0);
+        // ????? (Middle Melody Ring - ?? 0.65) - ??1????????
+        if (elapsed % 2 == 0) {
+            int midPoints = 16;
+            double midR = radius * 0.65;
+            for (int i = 0; i < midPoints; i++) {
+                double a = innerSpin + (Math.PI * 2 / midPoints) * i;
+                double px = centerVec.x + Math.cos(a) * midR;
+                double pz = centerVec.z + Math.sin(a) * midR;
+                world.spawnParticles(cyanDust, px, centerVec.y + 0.02, pz, 1, 0.0, 0.0, 0.0, 0.0);
             }
         }
 
-        // ??????? (Inner Singularity Ring - ?? 0.3)
-        int innerPoints = 16;
+        // ????? (Inner Singularity Ring - ?? 0.3) - ?????????
+        int innerPoints = 12;
         double innerR = radius * 0.3;
         for (int i = 0; i < innerPoints; i++) {
-            double a = innerSpin * 1.5 + (Math.PI * 2 / innerPoints) * i;
+            double a = innerSpin * 1.4 + (Math.PI * 2 / innerPoints) * i;
             double px = centerVec.x + Math.cos(a) * innerR;
             double pz = centerVec.z + Math.sin(a) * innerR;
-            world.spawnParticles(cyanDust, px, centerVec.y + 0.15, pz, 1, 0.01, 0.01, 0.01, 0.0);
-            if (elapsed % 10 == 0 && i % 4 == 0) {
-                world.spawnParticles(ParticleTypes.END_ROD, px, centerVec.y + 0.2, pz, 1, 0.0, 0.03, 0.0, 0.02);
-            }
+            world.spawnParticles(purpleDust, px, centerVec.y + 0.02, pz, 1, 0.0, 0.0, 0.0, 0.0);
         }
     }
 
     /**
-     * ????????????????????????
+     * ??????????????????????????
      */
     private void drawGroundSwirl(long elapsed) {
-        double base = elapsed * 0.06;
-        int arms = 4;
-        DustParticleEffect purple = new DustParticleEffect(PURPLE, 1.4f);
-        DustParticleEffect deep = new DustParticleEffect(DEEP_BLUE, 1.6f);
+        if (elapsed % 2 != 0) return; // ?????????????GPU??
+        double base = elapsed * 0.04;
+        int arms = 3; // 4???3?????????
+        DustParticleEffect purple = new DustParticleEffect(PURPLE, 0.75f);
+        DustParticleEffect deep = new DustParticleEffect(DEEP_BLUE, 0.75f);
 
         for (int arm = 0; arm < arms; arm++) {
             double off = base + (Math.PI * 2 / arms) * arm;
-            int steps = 16;
+            int steps = 10; // 16???10?
             for (int s = 0; s < steps; s++) {
                 double frac = s / (double) steps;
                 double rr = frac * radius;
-                double a = off + (1.0 - frac) * 1.2;
+                double a = off + (1.0 - frac) * 1.0;
                 double px = centerVec.x + Math.cos(a) * rr;
                 double pz = centerVec.z + Math.sin(a) * rr;
 
-                world.spawnParticles((s % 2 == 0 ? deep : purple), px, centerVec.y + 0.08, pz, 1, 0.02, 0.01, 0.02, 0.0);
-                if (s == steps - 1 && elapsed % 4 == 0) {
-                    world.spawnParticles(ParticleTypes.REVERSE_PORTAL, px, centerVec.y + 0.1, pz, 1, 0.05, 0.1, 0.05, 0.05);
-                }
+                world.spawnParticles((s % 2 == 0 ? deep : purple), px, centerVec.y + 0.03, pz, 1, 0.0, 0.0, 0.0, 0.0);
             }
         }
     }
