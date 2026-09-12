@@ -151,10 +151,21 @@ public final class ItemAppraiser {
                 || slot == EquipmentSlot.LEGS || slot == EquipmentSlot.FEET;
     }
 
-    private static boolean isWeaponLike(ItemStack stack, String path) {
+    public static boolean isWeaponLike(ItemStack stack, String path) {
         return path.contains("sword") || path.contains("blade") || path.contains("axe")
-                || path.contains("bow") || path.contains("spear") || path.contains("trident")
-                || path.contains("wand") || path.contains("staff") || path.contains("dagger");
+                || path.contains("bow") || path.contains("crossbow") || path.contains("spear")
+                || path.contains("trident") || path.contains("wand") || path.contains("staff")
+                || path.contains("dagger") || path.contains("scythe") || path.contains("hammer")
+                || isFirearmLike(path);
+    }
+
+    public static boolean isFirearmLike(String path) {
+        String p = path.toLowerCase();
+        return p.contains("gun") || p.contains("rifle") || p.contains("pistol")
+                || p.contains("shotgun") || p.contains("sniper") || p.contains("blaster")
+                || p.contains("cannon") || p.contains("smg") || p.contains("revolver")
+                || p.contains("tacz") || p.contains("pointblank") || p.contains("cgm")
+                || p.contains("firearm");
     }
 
     private static boolean isToolLike(String path) {

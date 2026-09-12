@@ -206,7 +206,7 @@ public final class DaniyaDomain {
             18, radius * 0.35, 0.35, radius * 0.35, 0.03);
     }
 
-'    // --- visuals ---
+    // --- visuals ---
 
     private void drawParticles(long elapsed) {
         // 1) ?????????????? (Ground Resonance Magic Circle)

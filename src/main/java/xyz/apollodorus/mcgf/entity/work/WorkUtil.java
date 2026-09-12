@@ -219,17 +219,33 @@ public final class WorkUtil {
         if (hardness == 0f) return 1f;     // instant (crops / torches / etc.)
         ItemStack tool = gf.getEquippedStack(EquipmentSlot.MAINHAND);
         float speed = tool.isEmpty() ? 1.0f : tool.getMiningSpeedMultiplier(st);
+
+        // 急迫/挖掘疲劳效果加成
+        if (net.minecraft.entity.effect.StatusEffectUtil.hasHaste(gf)) {
+            speed *= 1.0f + (net.minecraft.entity.effect.StatusEffectUtil.getHasteAmplifier(gf) + 1) * 0.2f;
+        }
+        if (gf.hasStatusEffect(net.minecraft.entity.effect.StatusEffects.MINING_FATIGUE)) {
+            int amp = gf.getStatusEffect(net.minecraft.entity.effect.StatusEffects.MINING_FATIGUE).getAmplifier();
+            speed *= (float) Math.pow(0.3, Math.min(amp + 1, 4));
+        }
+
         boolean canHarvest = !st.isToolRequired() || tool.isSuitableFor(st);
         return speed / hardness / (canHarvest ? 30f : 100f);
     }
 
-    /** Break the block, dropping items, and replant the same crop if she has seed. */
+    /** Break the block, dropping items, damage tool durability, and replant the same crop if she has seed. */
     public static void breakBlock(ServerWorld world, GirlfriendEntity gf, BlockPos pos) {
         BlockState before = world.getBlockState(pos);
         Item seed = before.getBlock() instanceof CropBlock ? cropSeed(before.getBlock()) : null;
 
         gf.swingHand(Hand.MAIN_HAND);
         world.breakBlock(pos, true, gf);
+
+        // 消耗手中工具耐久度
+        ItemStack tool = gf.getEquippedStack(EquipmentSlot.MAINHAND);
+        if (!tool.isEmpty() && tool.isDamageable()) {
+            tool.damage(1, gf, EquipmentSlot.MAINHAND);
+        }
 
         if (seed != null && removeOne(gf.getInventory(), seed)) {
             world.setBlockState(pos, before.getBlock().getDefaultState());

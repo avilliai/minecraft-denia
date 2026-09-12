@@ -1,5 +1,7 @@
 package xyz.apollodorus.mcgf.entity.goal;
 
+import xyz.apollodorus.mcgf.entity.work.CraftUtil;
+
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.Blocks;
@@ -183,6 +185,9 @@ public class WorkGoal extends Goal {
         if (st.isAir()) { resetMining(sw); target = null; return; }
 
         WorkUtil.ToolKind kind = WorkUtil.toolFor(st);
+        // 智能工具检查与自动合成：如果缺少相应工具，尝试从背包原料现场合成工作台与斧/镐
+        checkAndCraftNeededTool(kind);
+
         if (kind == WorkUtil.ToolKind.PICKAXE && WorkUtil.isOre(st)
             && !WorkUtil.hasTool(gf, WorkUtil.ToolKind.PICKAXE)) {
             if (active != null && (active.kind == Task.Kind.MINE
@@ -417,5 +422,34 @@ public class WorkGoal extends Goal {
         gf.setActiveTask(null);
         gf.getNavigation().stop();
         target = null;
+    }
+    /** 缺少工具时智能手搓合成工作台与工具 */
+    private void checkAndCraftNeededTool(WorkUtil.ToolKind kind) {
+        if (kind == WorkUtil.ToolKind.AXE && !WorkUtil.hasTool(gf, WorkUtil.ToolKind.AXE)) {
+            if (CraftUtil.craft(gf, Items.DIAMOND_AXE, 1).ok()) return;
+            if (CraftUtil.craft(gf, Items.IRON_AXE, 1).ok()) {
+                SpeechBus.speak(gf, "手搓了一把铁斧，砍树飞快~");
+                return;
+            }
+            if (CraftUtil.craft(gf, Items.STONE_AXE, 1).ok()) return;
+            if (CraftUtil.craft(gf, Items.WOODEN_AXE, 1).ok()) {
+                SpeechBus.speak(gf, "先做把木斧过渡一下，马上开工砍树！");
+                return;
+            }
+        } else if (kind == WorkUtil.ToolKind.PICKAXE && !WorkUtil.hasTool(gf, WorkUtil.ToolKind.PICKAXE)) {
+            if (CraftUtil.craft(gf, Items.DIAMOND_PICKAXE, 1).ok()) return;
+            if (CraftUtil.craft(gf, Items.IRON_PICKAXE, 1).ok()) {
+                SpeechBus.speak(gf, "手搓了把铁镐，挖矿效率大提升！");
+                return;
+            }
+            if (CraftUtil.craft(gf, Items.STONE_PICKAXE, 1).ok()) {
+                SpeechBus.speak(gf, "做好了石镐，可以挖铁矿啦~");
+                return;
+            }
+            if (CraftUtil.craft(gf, Items.WOODEN_PICKAXE, 1).ok()) {
+                SpeechBus.speak(gf, "先做个木镐挖点石头~");
+                return;
+            }
+        }
     }
 }
