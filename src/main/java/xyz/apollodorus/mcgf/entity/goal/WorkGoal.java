@@ -312,7 +312,7 @@ public class WorkGoal extends Goal {
                 // 严格反矿透：不仅要求有空气面暴露，还要求不隔着大山看透
                 // 如果矿石不在视线范围内或未暴露，则必须像真人一样忽略它，杜绝穿墙矿透！
                 boolean exposed = WorkUtil.isExposed(world, p);
-                boolean visible = WorkUtil.isTrulyVisibleOrExposed(world, gf.getEyePos(), p);
+                boolean visible = WorkUtil.isTrulyVisibleOrExposed(world, gf.getEyePos() == null ? gf.getEntityPos().add(0, 1.6, 0) : gf.getEyePos(), p);
                 if (!exposed || !visible) {
                     exclude.add(p);
                     blacklist(world.getTime(), p);

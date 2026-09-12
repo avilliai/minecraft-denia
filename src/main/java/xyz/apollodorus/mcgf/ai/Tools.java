@@ -1,5 +1,7 @@
 package xyz.apollodorus.mcgf.ai;
 
+import java.util.List;
+
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import net.minecraft.block.BlockState;
@@ -285,7 +287,27 @@ public final class Tools {
         int remaining = want - given;
         if (remaining <= 0) return "{\"ok\":true,\"gave\":" + given + "}";
         Task t = Task.obtain(item, remaining);
-        if (!WorkGoal.isGettable(t)) return "{\"ok\":true,\"gave\":" + given + ",\"canSource\":false}";
+        if (!WorkGoal.isGettable(t)) {
+            // 尝试直接合成（如果原料齐全）
+            CraftUtil.Result cr = CraftUtil.craft(gf, item, remaining);
+            if (cr.ok() && cr.crafted() > 0) {
+                int more = gf.giveToOwner(item, cr.crafted());
+                return "{\"ok\":true,\"gave\":" + (given + more) + ",\"crafted\":true}";
+            }
+            // 否则推导合成链所需的基础原料，并入队采集原料任务！
+            List<Item> missing = CraftUtil.getMissingRawMaterials(gf, item);
+            if (missing != null && !missing.isEmpty()) {
+                Item raw = missing.get(0);
+                Task rawTask = Task.obtain(raw, Math.max(1, remaining));
+                if (WorkGoal.isGettable(rawTask)) {
+                    gf.enqueueTask(rawTask);
+                    gf.enqueueTask(t); // 采完原料后再做目标物品
+                    boolean nearbyRaw = WorkGoal.hasNearbyTarget(gf, rawTask);
+                    return "{\"ok\":true,\"gave\":" + given + ",\"nearby\":" + nearbyRaw + ",\"needRaw\":\"" + raw.getName().getString() + "\"}";
+                }
+            }
+            return "{\"ok\":true,\"gave\":" + given + ",\"canSource\":false}";
+        }
         boolean nearby = WorkGoal.hasNearbyTarget(gf, t);
         gf.enqueueTask(t); // queued; if nothing's nearby she keeps it as a waiting job and retries when idle
         return "{\"ok\":true,\"gave\":" + given + ",\"willGather\":" + remaining + ",\"nearby\":" + nearby + "}";

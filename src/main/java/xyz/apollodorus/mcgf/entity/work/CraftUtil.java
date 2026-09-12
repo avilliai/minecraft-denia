@@ -56,6 +56,35 @@ public final class CraftUtil {
      * 把 {@code out} 合成到她背包里，直到累计做出 {@code count} 个或做不下去为止。递归先补中间材料。
      * 全程用批快照做回滚：一个批次中途失败会撤销该批的消耗；整体一个都没做出来则完全还原背包。
      */
+    
+    /**
+     * 推导目标物品所需但背包尚缺的原料列表。
+     */
+    public static List<Item> getMissingRawMaterials(GirlfriendEntity gf, Item target) {
+        List<Item> missing = new ArrayList<>();
+        if (target == null || gf == null) return missing;
+        World world = gf.getEntityWorld();
+        MinecraftServer server = world.getServer();
+        if (server == null) return missing;
+        ensureCache(server.getRecipeManager(), world);
+
+        CraftingRecipe recipe = byOutput.get(target);
+        if (recipe != null) {
+            for (Ingredient ing : recipe.getIngredientPlacement().getIngredients()) {
+                if (ing == null || ing.isEmpty()) continue;
+                
+                if (ing.isEmpty()) continue;
+                List<RegistryEntry<Item>> items = ing.getMatchingItems().toList();
+                if (items.isEmpty()) continue;
+                Item first = items.get(0).value();
+                if (gf.countItem(first) <= 0) {
+                    missing.add(first);
+                }
+            }
+        }
+        return missing;
+    }
+
     public static Result craft(GirlfriendEntity gf, Item out, int count) {
         if (out == null) return new Result(false, 0, null);
         if (count <= 0) count = 1;
@@ -145,8 +174,14 @@ public final class CraftUtil {
             Recipe<?> r = entry.value();
             if (!(r instanceof CraftingRecipe cr)) continue;
             if (!(cr instanceof ShapedRecipe) && !(cr instanceof ShapelessRecipe)) continue; // 跳过特殊动态配方
-            ItemStack res;
-            try { res = cr.craft(CraftingRecipeInput.EMPTY, reg); } catch (Exception e) { continue; }
+            ItemStack res = ItemStack.EMPTY;
+            try {
+                java.lang.reflect.Field f = cr.getClass().getDeclaredField("result");
+                f.setAccessible(true);
+                res = (ItemStack) f.get(cr);
+            } catch (Throwable ignored) {
+                try { res = cr.craft(CraftingRecipeInput.EMPTY, reg); } catch (Exception ignored2) {}
+            }
             if (res.isEmpty()) continue;
             Item out = res.getItem();
             CraftingRecipe prev = map.get(out);

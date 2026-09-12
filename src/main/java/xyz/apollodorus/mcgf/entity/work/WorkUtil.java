@@ -88,7 +88,8 @@ public final class WorkUtil {
         return false;
     }
 
-    public static boolean isTrulyVisibleOrExposed(World world, Vec3d eyes, BlockPos targetPos) {
+        public static boolean isTrulyVisibleOrExposed(World world, Vec3d eyes, BlockPos targetPos) {
+        if (world == null || eyes == null || targetPos == null) return true;
         // 先检查是否有暴露在空气中的面
         Direction exposedDir = null;
         for (Direction dir : Direction.values()) {
@@ -101,24 +102,28 @@ public final class WorkUtil {
         }
         if (exposedDir == null) return false; // 没有任何暴露面，属于实心岩体深处，拒绝矿透！
 
-        // 从视线向该暴露面中心投射射线
-        Vec3d targetCenter = Vec3d.ofCenter(targetPos).add(
-            exposedDir.getOffsetX() * 0.45,
-            exposedDir.getOffsetY() * 0.45,
-            exposedDir.getOffsetZ() * 0.45
-        );
-        RaycastContext ctx = new RaycastContext(
-            eyes,
-            targetCenter,
-            RaycastContext.ShapeType.COLLIDER,
-            RaycastContext.FluidHandling.NONE,
-            (net.minecraft.entity.Entity) null
-        );
-        HitResult hit = world.raycast(ctx);
-        if (hit == null || hit.getType() == HitResult.Type.MISS) return true;
-        if (hit.getType() == HitResult.Type.BLOCK && hit instanceof BlockHitResult bhr) {
-            BlockPos hitPos = bhr.getBlockPos();
-            return hitPos.equals(targetPos) || hitPos.equals(targetPos.offset(exposedDir));
+        try {
+            // 从视线向该暴露面中心投射射线
+            Vec3d targetCenter = Vec3d.ofCenter(targetPos).add(
+                exposedDir.getOffsetX() * 0.45,
+                exposedDir.getOffsetY() * 0.45,
+                exposedDir.getOffsetZ() * 0.45
+            );
+            RaycastContext ctx = new RaycastContext(
+                eyes,
+                targetCenter,
+                RaycastContext.ShapeType.COLLIDER,
+                RaycastContext.FluidHandling.NONE,
+                net.minecraft.block.ShapeContext.absent()
+            );
+            HitResult hit = world.raycast(ctx);
+            if (hit == null || hit.getType() == HitResult.Type.MISS) return true;
+            if (hit.getType() == HitResult.Type.BLOCK && hit instanceof BlockHitResult bhr) {
+                BlockPos hitPos = bhr.getBlockPos();
+                return hitPos.equals(targetPos) || hitPos.equals(targetPos.offset(exposedDir));
+            }
+        } catch (Throwable ignored) {
+            return true; // 射线异常时优雅降级为允许，绝不导致实体tick崩溃
         }
         return false;
     }
