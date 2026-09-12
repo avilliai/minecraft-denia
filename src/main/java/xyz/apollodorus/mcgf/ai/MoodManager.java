@@ -253,7 +253,7 @@ public final class MoodManager {
         if (newBiome) {
             String combined = getWeatherBiomeCombination(biome, raining, night);
             if (combined != null) return combined;
-            String specific = getSpecificBiomeReaction(p, biome);
+            String specific = getSpecificBiomeReaction(gf, p, biome);
             if (specific != null) return specific;
             return GirlfriendConfig.pickOne(p.newBiome).replace("{biome}", biome);
         }
@@ -263,7 +263,8 @@ public final class MoodManager {
         // 「天黑搭话」。白天还暗的地方=洞穴/封闭空间，这时提一句才有意义；夜晚交给 nightfall 一句就够。
         if (enteredDarkPlace && !night && gf.getRandom().nextDouble() < 0.3) return GirlfriendConfig.pickOne(p.inDarkPlace);
         if (enteredHighPlace && gf.getRandom().nextDouble() < 0.4) return GirlfriendConfig.pickOne(p.highPlace);
-        if (enteredWater && gf.getRandom().nextDouble() < 0.3) return GirlfriendConfig.pickOne(p.underwaterOrCave);
+        // 仅在真实潜水或者处于深层洞穴封闭空间时触发憋闷感，不在刚刚踩到地表浅水或露天时误发
+        if ((enteredWater && gf.isSubmergedInWater()) && gf.getRandom().nextDouble() < 0.25) return GirlfriendConfig.pickOne(p.underwaterOrCave);
 
         // 玩家行为反应（低频率，避免打断）
         if (playerStartedMining && gf.getRandom().nextDouble() < 0.2) return GirlfriendConfig.pickOne(p.playerMining);
@@ -310,7 +311,7 @@ public final class MoodManager {
     }
 
     /** 获取具体生物群系的反应 */
-    private static String getSpecificBiomeReaction(GirlfriendConfig.Prompts p, String biome) {
+    private static String getSpecificBiomeReaction(GirlfriendEntity gf, GirlfriendConfig.Prompts p, String biome) {
         // 樱花林
         if (biome.contains("cherry")) return GirlfriendConfig.pickOne(p.biomeCherryGrove);
 
@@ -365,7 +366,7 @@ public final class MoodManager {
         if (biome.contains("dark_forest")) return GirlfriendConfig.pickOne(p.biomeDarkForest);
 
         // 洞穴
-        if (biome.contains("cave") || biome.contains("dripstone")) return GirlfriendConfig.pickOne(p.biomeCave);
+        if ((biome.contains("cave") || biome.contains("dripstone")) && gf.getY() < 55 && !gf.getEntityWorld().isSkyVisible(gf.getBlockPos())) return GirlfriendConfig.pickOne(p.biomeCave);
 
         // 深暗之域
         if (biome.contains("deep_dark")) return GirlfriendConfig.pickOne(p.biomeDeepDark);
