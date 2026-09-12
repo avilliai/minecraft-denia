@@ -15,7 +15,7 @@ import org.joml.Vector3f;
 import xyz.apollodorus.mcgf.ai.SpeechBus;
 import xyz.apollodorus.mcgf.config.ConfigManager;
 import xyz.apollodorus.mcgf.entity.GirlfriendEntity;
-import xyz.apollodorus.mcgf.entity.ability.AbilityManager;
+import xyz.apollodorus.mcgf.combat.AbilityManager;
 
 import java.util.List;
 
@@ -27,10 +27,10 @@ import java.util.List;
  */
 public class DaniyaCombatEngine {
 
-    private static final Vector3f CYAN = new Vector3f(0.2f, 0.85f, 0.95f);
-    private static final Vector3f PINK = new Vector3f(0.95f, 0.4f, 0.75f);
-    private static final Vector3f PURPLE = new Vector3f(0.65f, 0.15f, 0.95f);
-    private static final Vector3f DARK_VIOLET = new Vector3f(0.25f, 0.05f, 0.45f);
+    private static final int CYAN = 0x59D8FF;
+    private static final int PINK = 0xFFA0D2;
+    private static final int PURPLE = 0xBA43FF;
+    private static final int DARK_VIOLET = 0x6E22B0;
 
     private static long lastDodgeTick = 0;
     private static long lastResonanceSkillTick = 0;
@@ -183,7 +183,7 @@ public class DaniyaCombatEngine {
         // 浮空击退
         Vec3d knockback = dir.multiply(1.2).add(0, 0.25, 0);
         target.setVelocity(knockback);
-        target.velocityModified = true;
+        target.velocityDirty = true;
     }
 
     /**
@@ -315,7 +315,7 @@ public class DaniyaCombatEngine {
                     victim.damage(sw, gf.getDamageSources().magic(), dmg);
                     // 挑空浮空
                     victim.setVelocity(new Vec3d(0, 0.65 + waveIdx * 0.2, 0));
-                    victim.velocityModified = true;
+                    victim.velocityDirty = true;
                     victim.addStatusEffect(new StatusEffectInstance(StatusEffects.LEVITATION, 15, 1));
                     victim.addStatusEffect(new StatusEffectInstance(StatusEffects.WEAKNESS, 80, 1));
                 }
@@ -336,7 +336,7 @@ public class DaniyaCombatEngine {
      * 生成极速折跃与闪避残影
      */
     private static void spawnDodgeAfterimage(ServerWorld sw, Vec3d pos, boolean formTwo) {
-        Vector3f color = formTwo ? PURPLE : CYAN;
+        int color = formTwo ? PURPLE : CYAN;
         for (double dy = 0.1; dy <= 1.8; dy += 0.25) {
             sw.spawnParticles(new DustParticleEffect(color, 1.8f),
                     pos.x, pos.y + dy, pos.z, 4, 0.2, 0.05, 0.2, 0.0);

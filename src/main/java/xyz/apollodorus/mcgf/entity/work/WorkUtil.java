@@ -382,10 +382,26 @@ public final class WorkUtil {
     /** Resolve a free-text item name (中/英) to a vanilla Item, or null. */
     public static Item resolveItem(String name) {
         if (name == null) return null;
-        String key = name.trim().toLowerCase().replace(' ', '_').replace("minecraft:", "");
+        String trimmed = name.trim();
+        String key = trimmed.toLowerCase().replace(' ', '_').replace("-", "_").replace("minecraft:", "");
         if (key.isEmpty()) return null;
-        String mapped = ALIASES.getOrDefault(name.trim(), ALIASES.getOrDefault(key, key));
+
+        // 1. Direct ALIASES lookup
+        String mapped = ALIASES.get(trimmed);
+        if (mapped == null) mapped = ALIASES.get(key);
+
+        if (mapped == null) {
+            // Normalize common English prefixes (wood_axe -> wooden_axe, gold_pickaxe -> golden_pickaxe)
+            if (key.startsWith("wood_")) mapped = "wooden_" + key.substring(5);
+            else if (key.startsWith("gold_")) mapped = "golden_" + key.substring(5);
+            else mapped = key;
+        }
+
         Item item = Registries.ITEM.get(Identifier.of("minecraft", mapped));
+        if (item != null && item != Items.AIR) return item;
+
+        // Try direct lookup with original key
+        item = Registries.ITEM.get(Identifier.of("minecraft", key));
         return item == Items.AIR ? null : item;
     }
 

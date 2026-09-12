@@ -35,7 +35,11 @@ public final class SpeechBus {
         String name = ConfigManager.get().persona.displayName;
         // She may reply as a burst of short messages separated by "||" — show each as its own chat line
         // (a line without "||" is a single segment, so all other callers are unaffected).
-        for (String seg : SpeechPayload.segments(text)) {
+        String cleanedText = text.replaceAll("(?i)\\[助手此前请求函数调用\\][^\\n\\r]*", "")
+            .replaceAll("(?i)arguments=\\{[^\\}]*\\}", "")
+            .trim();
+        for (String seg : SpeechPayload.segments(cleanedText)) {
+            if (seg.matches("^[\\?\\？\\s\\.�]{2,}$")) continue;
             server.getPlayerManager().broadcast(Text.literal("<" + name + "> " + seg), false);
         }
 

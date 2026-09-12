@@ -229,9 +229,9 @@ public final class DaniyaDomain {
         // ???????????????????????????????????????????
         double innerSpin = elapsed * 0.05;
         double outerSpin = -elapsed * 0.025;
-        DustParticleEffect cyanDust = new DustParticleEffect(0x5BC8FF, 0.75f);
-        DustParticleEffect purpleDust = new DustParticleEffect(PURPLE, 0.8f);
-        DustParticleEffect deepBlueDust = new DustParticleEffect(DEEP_BLUE, 0.85f);
+        DustParticleEffect cyanDust = new DustParticleEffect(0x5BC8FF, 0.5f);
+        DustParticleEffect purpleDust = new DustParticleEffect(PURPLE, 0.5f);
+        DustParticleEffect deepBlueDust = new DustParticleEffect(DEEP_BLUE, 0.5f);
 
         // ??????? (Outer Boundary Ring) - ??0.03??????
         int outerPoints = 24;
@@ -272,11 +272,11 @@ public final class DaniyaDomain {
      * ??????????????????????????
      */
     private void drawGroundSwirl(long elapsed) {
-        if (elapsed % 2 != 0) return; // ?????????????GPU??
+        if (elapsed % 3 != 0) return; // ?????????????GPU??
         double base = elapsed * 0.04;
         int arms = 3; // 4???3?????????
-        DustParticleEffect purple = new DustParticleEffect(PURPLE, 0.75f);
-        DustParticleEffect deep = new DustParticleEffect(DEEP_BLUE, 0.75f);
+        DustParticleEffect purple = new DustParticleEffect(PURPLE, 0.45f);
+        DustParticleEffect deep = new DustParticleEffect(DEEP_BLUE, 0.45f);
 
         for (int arm = 0; arm < arms; arm++) {
             double off = base + (Math.PI * 2 / arms) * arm;

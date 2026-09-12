@@ -226,7 +226,15 @@ public final class ChatBrain {
             }
         }
 
-        if (reply == null || reply.isBlank()) reply = "好呀~";
+        if (reply != null) {
+            reply = reply.replaceAll("(?i)\\[助手此前请求函数调用\\][^\\n\\r]*", "")
+                         .replaceAll("(?i)arguments=\\{[^\\}]*\\}", "")
+                         .replaceAll("(?i)<tool_call>[^<]*</tool_call>", "")
+                         .trim();
+        }
+        if (reply == null || reply.isBlank() || reply.matches("^[\\?\\？\\s\\.�]{2,}$")) {
+            reply = "嗯？漂泊者你在说什么呢~ 走神了一下下，再说一遍嘛。";
+        }
         return new Reply(userMsg, reply);
     }
 
@@ -275,12 +283,15 @@ public final class ChatBrain {
         double dist = gf.distanceTo(player);
         long tod = gf.getEntityWorld().getTimeOfDay() % 24000L;
         String daypart = tod < 12000 ? "白天" : (tod < 13000 ? "黄昏" : "夜晚");
+        boolean raining = gf.getEntityWorld().isRaining();
+        boolean thundering = gf.getEntityWorld().isThundering();
+        String weather = thundering ? "雷雨交加" : (raining ? "阴雨绵绵/下雨" : "晴朗天气");
         String biome = gf.getEntityWorld().getBiome(pos)
             .getKey().map(k -> k.getValue().getPath()).orElse("unknown");
         int hostiles = countHostiles(gf);
         return String.join("\n",
             "你的生命：" + (int) gf.getHealth() + "/" + (int) gf.getMaxHealth(),
-            "你的坐标：(" + pos.getX() + ", " + pos.getY() + ", " + pos.getZ() + ")，生物群系：" + biome + "，" + daypart,
+            "你的坐标：(" + pos.getX() + ", " + pos.getY() + ", " + pos.getZ() + ")，生物群系：" + biome + "，" + daypart + "，当前天气：" + weather + "（下雨天别说好晒出大太阳）",
             "对话玩家「" + player.getName().getString() + "」距你约 " + String.format("%.1f", dist) + " 格",
             "漂泊者现状：生命 " + (int) player.getHealth() + "/" + (int) player.getMaxHealth()
                 + "，饥饿 " + player.getHungerManager().getFoodLevel() + "/20，手持 " + heldItemName(player)
@@ -418,6 +429,11 @@ public final class ChatBrain {
         if (reply.length() >= 2 && reply.startsWith("「") && reply.endsWith("」")) {
             reply = reply.substring(1, reply.length() - 1).trim();
         }
+        reply = reply.replaceAll("(?i)\\[助手此前请求函数调用\\][^\\n\\r]*", "")
+                     .replaceAll("(?i)arguments=\\{[^\\}]*\\}", "")
+                     .replaceAll("(?i)<tool_call>[^<]*</tool_call>", "")
+                     .trim();
+        if (reply.matches("^[\\?\\？\\s\\.�]{2,}$")) return null;
         return reply;
     }
 

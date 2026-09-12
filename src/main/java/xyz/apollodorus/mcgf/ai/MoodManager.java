@@ -170,7 +170,9 @@ public final class MoodManager {
 
         // 环境检测
         int lightLevel = gf.getEntityWorld().getLightLevel(gf.getBlockPos());
-        boolean inDarkPlace = lightLevel < 7;
+        // 必须为真正无天空视线且处在地下或深处封闭洞穴，绝不能在露天暴雨或树下因天空变暗误判为下洞憋闷
+        boolean skyVisible = gf.getEntityWorld().isSkyVisible(gf.getBlockPos());
+        boolean inDarkPlace = lightLevel < 7 && !skyVisible && gf.getBlockPos().getY() < 60;
         boolean highPlace = isHighPlace(gf);
         boolean underwater = gf.isSubmergedInWater() || gf.getEntityWorld().getBlockState(gf.getBlockPos()).isLiquid();
 
@@ -336,17 +338,25 @@ public final class MoodManager {
         // 海洋
         if (biome.contains("ocean")) return GirlfriendConfig.pickOne(p.biomeOcean);
 
-        // 草甸
-        if (biome.contains("meadow")) return GirlfriendConfig.pickOne(p.biomeMeadow);
+        // 下雨天绝不触发晒太阳或过晒相关的群系吐槽
+        if (!gf.getEntityWorld().isRaining()) {
+            // 草甸
+            if (biome.contains("meadow")) return GirlfriendConfig.pickOne(p.biomeMeadow);
 
-        // 平原
-        if (biome.contains("plains")) return GirlfriendConfig.pickOne(p.biomePlains);
+            // 平原
+            if (biome.contains("plains")) return GirlfriendConfig.pickOne(p.biomePlains);
 
-        // 沙漠
-        if (biome.contains("desert")) return GirlfriendConfig.pickOne(p.biomeDesert);
+            // 沙漠
+            if (biome.contains("desert")) return GirlfriendConfig.pickOne(p.biomeDesert);
 
-        // 恶地
-        if (biome.contains("badlands") || biome.contains("mesa")) return GirlfriendConfig.pickOne(p.biomeBadlands);
+            // 恶地
+            if (biome.contains("badlands") || biome.contains("mesa")) return GirlfriendConfig.pickOne(p.biomeBadlands);
+        } else {
+            // 雨天时平原草甸有专门的雨景体验
+            if (biome.contains("meadow") || biome.contains("plains")) {
+                return "雨水落在草叶上的声音真好听……不过漂泊者，我们是不是该找个避雨的地方了呀？";
+            }
+        }
 
         // 雪地
         if (biome.contains("snowy") || biome.contains("frozen") || biome.contains("ice")) {
