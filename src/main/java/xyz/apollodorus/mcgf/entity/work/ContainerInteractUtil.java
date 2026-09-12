@@ -56,12 +56,12 @@ public final class ContainerInteractUtil {
     public static String inspectContainer(ServerWorld world, BlockPos pos) {
         BlockEntity be = world.getBlockEntity(pos);
         if (!(be instanceof Inventory inv)) {
-            return "??????????????";
+            return "周围5格内没有找到箱子或容器";
         }
         int total = inv.size();
         int used = 0;
         StringBuilder sb = new StringBuilder();
-        sb.append(be.getClass().getSimpleName()).append(" ?? ").append(pos.toShortString()).append("?\n");
+        sb.append(be.getClass().getSimpleName()).append(" 在 ").append(pos.toShortString()).append("：\n");
         for (int i = 0; i < total; i++) {
             ItemStack s = inv.getStack(i);
             if (!s.isEmpty()) {
@@ -71,8 +71,8 @@ public final class ContainerInteractUtil {
                 }
             }
         }
-        sb.append("???: ").append(used).append("/").append(total);
-        if (used > 8) sb.append(" (????8?)");
+        sb.append("占用格子: ").append(used).append("/").append(total);
+        if (used > 8) sb.append(" (显示前8项)");
         return sb.toString();
     }
 
@@ -142,7 +142,7 @@ public final class ContainerInteractUtil {
     public static String interactWithFurnace(ServerWorld world, BlockPos pos, GirlfriendEntity gf) {
         BlockEntity be = world.getBlockEntity(pos);
         if (!(be instanceof AbstractFurnaceBlockEntity furnace)) {
-            return "?????????????";
+            return "没有找到包含该物品的箱子";
         }
         int collected = 0;
         ItemStack outStack = furnace.getStack(2);
@@ -199,7 +199,7 @@ public final class ContainerInteractUtil {
             }
         }
 
-        return String.format("??????????? %d ?????? %d ????????? %d ??",
+        return String.format("成功存入低价值杂物 %d 种共 %d 件，背包剩余空位 %d 格",
                 collected, fuelAdded, smeltAdded);
     }
 }

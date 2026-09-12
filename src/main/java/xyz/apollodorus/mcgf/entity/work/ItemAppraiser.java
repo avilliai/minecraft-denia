@@ -54,7 +54,7 @@ public final class ItemAppraiser {
 
     public static Evaluation evaluate(ItemStack stack, GirlfriendEntity gf) {
         if (stack == null || stack.isEmpty()) {
-            return new Evaluation(ItemCategory.JUNK, 0, 0, "??", "???????");
+            return new Evaluation(ItemCategory.JUNK, 0, 0, "空", "两手空空呢");
         }
 
         Item item = stack.getItem();
@@ -69,14 +69,14 @@ public final class ItemAppraiser {
 
         for (String bad : DISLIKED_KEYS) {
             if (path.contains(bad)) {
-                return new Evaluation(ItemCategory.JUNK, 5, -80, "??/????", "?????????????????????");
+                return new Evaluation(ItemCategory.JUNK, 5, -80, "剧毒/垃圾", "唔…这东西脏兮兮的，快扔掉啦");
             }
         }
 
         for (String sweet : SWEET_KEYS) {
             if (path.contains(sweet)) {
                 preference += 60;
-                comment = "???????????????????????????";
+                comment = "热熔属性的核心！暖洋洋的，我很中意哦~";
                 break;
             }
         }
@@ -84,7 +84,7 @@ public final class ItemAppraiser {
         for (String sea : SEA_KEYS) {
             if (path.contains(sea)) {
                 preference += 45;
-                if (comment == null) comment = "??????????????????????????";
+                if (comment == null) comment = "闪闪发光的虚质结晶，感觉能做成好看的坠饰呢";
                 break;
             }
         }
@@ -92,7 +92,7 @@ public final class ItemAppraiser {
         for (String cosmic : VOID_COSMIC_KEYS) {
             if (path.contains(cosmic)) {
                 preference += 55;
-                if (comment == null) comment = "?????????????????????????????";
+                if (comment == null) comment = "沉甸甸的矿物原石，挖矿还算小有收获嘛";
                 break;
             }
         }
@@ -119,7 +119,7 @@ public final class ItemAppraiser {
             cat = ItemCategory.ORE_GEM;
             baseScore = getMineralScore(path);
             preference += 30;
-            if (comment == null) comment = "??????????????????????????";
+            if (comment == null) comment = "闪闪发光的虚质结晶，感觉能做成好看的坠饰呢";
         } else if (item instanceof BlockItem) {
             cat = ItemCategory.BUILDING;
             baseScore = 25;
@@ -133,14 +133,14 @@ public final class ItemAppraiser {
         int finalScore = Math.max(0, Math.min(100, baseScore));
         int finalPref = Math.max(-100, Math.min(100, preference));
 
-        String qualityDesc = finalScore >= 85 ? "??/??" :
-                finalScore >= 65 ? "??/??" :
-                finalScore >= 40 ? "??/??" : "??/??";
+        String qualityDesc = finalScore >= 85 ? "极品/神装" :
+                finalScore >= 65 ? "精良/实用" :
+                finalScore >= 40 ? "普通/合格" : "粗劣/杂物";
 
         if (comment == null) {
-            if (finalScore >= 80) comment = "????????????????????";
-            else if (finalScore >= 50) comment = "????????????????";
-            else comment = "?????????????????????";
+            if (finalScore >= 80) comment = "真是一件不得了的极品装备呢，漂泊者好厉害！";
+            else if (finalScore >= 50) comment = "还挺趁手的实用家伙，平时冒险正好用得上";
+            else comment = "马马虎虎能凑合着用，之后有好的再换掉吧";
         }
 
         return new Evaluation(cat, finalScore, finalPref, qualityDesc, comment);
@@ -250,12 +250,12 @@ public final class ItemAppraiser {
         if (gf == null || stack == null || stack.isEmpty()) return;
         Evaluation eval = evaluate(stack, gf);
         if (eval.daniyaPreference() >= 50) {
-            xyz.apollodorus.mcgf.ai.MoodManager.tryEventProactive(gf, "?????????: " + stack.getName().getString() + "????????????????");
+            xyz.apollodorus.mcgf.ai.MoodManager.tryEventProactive(gf, "收获珍贵宝物: " + stack.getName().getString() + "，达妮娅感到非常惊喜");
             if (gf.getRandom().nextFloat() < 0.4f) {
                 xyz.apollodorus.mcgf.ai.SpeechBus.speak(gf, eval.daniyaComment());
             }
         } else if (eval.daniyaPreference() <= -40) {
-            xyz.apollodorus.mcgf.ai.MoodManager.tryEventProactive(gf, "???????????: " + stack.getName().getString() + "?????");
+            xyz.apollodorus.mcgf.ai.MoodManager.tryEventProactive(gf, "捡到脏兮兮的杂物: " + stack.getName().getString() + "，达妮娅嫌弃地皱了皱眉");
             if (gf.getRandom().nextFloat() < 0.3f) {
                 xyz.apollodorus.mcgf.ai.SpeechBus.speak(gf, eval.daniyaComment());
             }
