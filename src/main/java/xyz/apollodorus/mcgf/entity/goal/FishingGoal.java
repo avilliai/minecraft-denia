@@ -207,12 +207,27 @@ public class FishingGoal extends Goal {
     }
 
     private boolean swingMaybe(ServerWorld sw) {
-        return sw.getTime() % 18 == 0;   // 偶尔抖一下竿
+        return sw.getTime() % 24 == 0;   // ??????
     }
 
     private void bobberParticles(ServerWorld sw, Vec3d center) {
-        if (sw.getTime() % 8 != 0) return;
-        sw.spawnParticles(ParticleTypes.FISHING, center.x, water.getY() + 1.0, center.z, 1, 0.1, 0.0, 0.1, 0.0);
+        if (water == null) return;
+        double wy = water.getY() + 0.95;
+        // ?????????
+        if (sw.getTime() % 6 == 0) {
+            sw.spawnParticles(ParticleTypes.SPLASH, center.x, wy, center.z, 2, 0.05, 0.0, 0.05, 0.02);
+        }
+        // ??????????????
+        if (castTimer <= 30) {
+            if (sw.getTime() % 3 == 0) {
+                double angle = (30 - castTimer) * 0.35;
+                double r = Math.max(0.1, (castTimer) * 0.04);
+                double px = center.x + Math.cos(angle) * r;
+                double pz = center.z + Math.sin(angle) * r;
+                sw.spawnParticles(ParticleTypes.FISHING, px, wy, pz, 1, 0.02, 0.0, 0.02, 0.0);
+                sw.spawnParticles(ParticleTypes.BUBBLE, px, wy - 0.1, pz, 1, 0.01, 0.02, 0.01, 0.01);
+            }
+        }
     }
 
     private BlockPos findWater(ServerWorld sw) {

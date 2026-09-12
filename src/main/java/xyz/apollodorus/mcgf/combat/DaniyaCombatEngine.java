@@ -20,10 +20,10 @@ import xyz.apollodorus.mcgf.entity.GirlfriendEntity;
 import java.util.List;
 
 /**
- * ???????? (Wuthering Waves Combat Engine for Daniya):
+ * ?????? (Wuthering Waves Combat Engine for Daniya):
  * 1. ??????? (Extreme Dodge & Counter)
- * 2. ???? (Resonance Skill)????? / ????
- * 3. ???????????
+ * 2. ???? (Resonance Skill)???? ???? / ??? ????
+ * 3. ?????????
  */
 public final class DaniyaCombatEngine {
     private DaniyaCombatEngine() {}
@@ -31,18 +31,19 @@ public final class DaniyaCombatEngine {
     private static final int CYAN = 0x5BC8FF;
     private static final int PINK = 0xFF8FD4;
     private static final int PURPLE = 0x9D4EDD;
+    private static final int VOID_BLACK = 0x1E0F38;
     private static final int WHITE = 0xFFFFFF;
 
     private static long lastDodgeTick = 0;
     private static long lastSkillTick = 0;
 
     /**
-     * ???????????
+     * ??????
      */
     public static boolean tryExtremeDodge(GirlfriendEntity gf, LivingEntity attacker) {
         ServerWorld sw = (ServerWorld) gf.getEntityWorld();
         long now = sw.getTime();
-        // ???????7 ? (140 ticks)
+        // ?????? 7 ? (140 ticks)
         if (now - lastDodgeTick < 140) return false;
         lastDodgeTick = now;
 
@@ -55,14 +56,14 @@ public final class DaniyaCombatEngine {
         }
         if (away.lengthSquared() < 0.01) away = new Vec3d(0, 0, -1);
 
-        // ??????????????
+        // ??????????
         spawnDodgeAfterimage(sw, gfPos, gf.isFormTwo());
 
-        // ?????????????? 3.8 ?
+        // ???????? 3.8 ?
         Vec3d targetPos = gfPos.add(away.x * 3.8, 0.2, away.z * 3.8);
         gf.teleport(targetPos.x, targetPos.y, targetPos.z, true);
 
-        // ??????????? + ?????
+        // ???????????
         sw.playSound(null, gf.getX(), gf.getY(), gf.getZ(),
                 SoundEvents.ENTITY_PLAYER_ATTACK_SWEEP, SoundCategory.PLAYERS, 1.2f, 1.6f);
         sw.playSound(null, gf.getX(), gf.getY(), gf.getZ(),
@@ -74,15 +75,15 @@ public final class DaniyaCombatEngine {
 
         if (gf.getRandom().nextFloat() < 0.5f) {
             String[] quotes = {
-                    "?????????????",
-                    "??????????",
-                    "????????????",
-                    "????????????"
+                    "?????????~",
+                    "?????",
+                    "???????~",
+                    "?????"
             };
             SpeechBus.speak(gf, quotes[gf.getRandom().nextInt(quotes.length)]);
         }
 
-        // 0.25 ? (5 ticks) ?????????????
+        // 0.25 ? (5 ticks) ???????????
         AbilityManager.delay(sw, now + 5, () -> {
             if (!gf.isAlive()) return;
             LivingEntity target = attacker != null && attacker.isAlive() ? attacker : gf.getTarget();
@@ -95,7 +96,7 @@ public final class DaniyaCombatEngine {
     }
 
     /**
-     * ??????????????? + ?????
+     * ????????????? + ????
      */
     private static void executeDodgeCounter(ServerWorld sw, GirlfriendEntity gf, LivingEntity target) {
         gf.swingHand(Hand.MAIN_HAND);
@@ -103,7 +104,7 @@ public final class DaniyaCombatEngine {
         Vec3d to = target.getEntityPos().add(0, target.getHeight() * 0.5, 0);
         Vec3d dir = to.subtract(from).normalize();
 
-        // ?????????
+        // ??????
         for (double d = 0; d < from.distanceTo(to); d += 0.4) {
             Vec3d p = from.add(dir.multiply(d));
             sw.spawnParticles(new DustParticleEffect(gf.isFormTwo() ? PURPLE : CYAN, 1.5f),
@@ -111,18 +112,18 @@ public final class DaniyaCombatEngine {
             sw.spawnParticles(ParticleTypes.CRIT, p.x, p.y, p.z, 1, 0.05, 0.05, 0.05, 0.05);
         }
 
-        // ???????????
+        // ????????
         sw.spawnParticles(ParticleTypes.SONIC_BOOM, to.x, to.y, to.z, 1, 0, 0, 0, 0);
         sw.spawnParticles(ParticleTypes.EXPLOSION_EMITTER, to.x, to.y, to.z, 1, 0, 0, 0, 0);
         sw.playSound(null, to.x, to.y, to.z, SoundEvents.ENTITY_WARDEN_ATTACK_IMPACT, SoundCategory.PLAYERS, 1.0f, 1.4f);
 
-        // ?? 2.5 ???????????
+        // ?? 2.5 ????????
         float counterDmg = (float) (ConfigManager.get().behavior.rangedDamage * 2.5);
         target.damage(sw, sw.getDamageSources().mobAttack(gf), counterDmg);
         target.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, 40, 2));
 
-        // ????
-        Vec3d knockback = dir.multiply(0.8).add(0, 0.25, 0);
+        // ??
+        Vec3d knockback = dir.multiply(1.2).add(0, 0.25, 0);
         target.addVelocity(knockback.x, knockback.y, knockback.z);
     }
 
@@ -144,10 +145,10 @@ public final class DaniyaCombatEngine {
     }
 
     /**
-     * ??????????????
+     * ????????????????
      */
     private static void castFormOneSkill(ServerWorld sw, GirlfriendEntity gf, LivingEntity target) {
-        SpeechBus.speak(gf, "???????????");
+        SpeechBus.speak(gf, "?????????");
         sw.playSound(null, gf.getX(), gf.getY(), gf.getZ(),
                 SoundEvents.BLOCK_AMETHYST_BLOCK_CHIME, SoundCategory.PLAYERS, 1.5f, 1.2f);
         sw.playSound(null, gf.getX(), gf.getY(), gf.getZ(),
@@ -187,47 +188,101 @@ public final class DaniyaCombatEngine {
     }
 
     /**
-     * ??????????????
+     * ???????????? (Dark Spike Surge)
+     * ???????????????????????????????????
      */
     private static void castFormTwoSkill(ServerWorld sw, GirlfriendEntity gf, LivingEntity target) {
-        SpeechBus.speak(gf, "??????????");
+        SpeechBus.speak(gf, "?????????");
         sw.playSound(null, gf.getX(), gf.getY(), gf.getZ(),
-                SoundEvents.BLOCK_RESPAWN_ANCHOR_SET_SPAWN, SoundCategory.PLAYERS, 1.3f, 0.8f);
+                SoundEvents.ENTITY_WARDEN_SONIC_CHARGE, SoundCategory.PLAYERS, 1.4f, 0.9f);
+        sw.playSound(null, gf.getX(), gf.getY(), gf.getZ(),
+                SoundEvents.BLOCK_RESPAWN_ANCHOR_SET_SPAWN, SoundCategory.PLAYERS, 1.3f, 0.7f);
 
-        Vec3d targetPos = target.getEntityPos().add(0, 0.5, 0);
+        Vec3d targetPos = target.getEntityPos();
+        long now = sw.getTime();
 
-        sw.spawnParticles(ParticleTypes.REVERSE_PORTAL, targetPos.x, targetPos.y + 1.0, targetPos.z,
-                50, 1.5, 1.0, 1.5, 0.3);
-        sw.spawnParticles(new DustParticleEffect(PURPLE, 2.0f), targetPos.x, targetPos.y + 0.8, targetPos.z,
-                40, 1.8, 0.6, 1.8, 0.1);
-        sw.spawnParticles(ParticleTypes.SCULK_SOUL, targetPos.x, targetPos.y, targetPos.z, 15, 1.2, 0.3, 1.2, 0.05);
+        // 3???????????
+        for (int wave = 0; wave < 3; wave++) {
+            final int waveIdx = wave;
+            AbilityManager.delay(sw, now + waveIdx * 4, () -> {
+                if (!gf.isAlive()) return;
+                Vec3d center = (target.isAlive() ? target.getEntityPos() : targetPos);
+                double waveRadius = 1.0 + waveIdx * 1.8;
+                int spikes = 6 + waveIdx * 4;
 
-        float skillDmg = (float) (ConfigManager.get().behavior.rangedDamage * 2.2);
-        List<Entity> foes = sw.getOtherEntities(gf, Box.of(targetPos, 5.0, 3.5, 5.0),
-                e -> e instanceof HostileEntity && e.isAlive());
-        for (Entity e : foes) {
-            LivingEntity foe = (LivingEntity) e;
-            foe.damage(sw, sw.getDamageSources().mobAttack(gf), skillDmg);
-            foe.addVelocity(0, 0.6, 0);
+                // ?????????????
+                for (int i = 0; i < 20; i++) {
+                    double ang = i * (Math.PI * 2 / 20);
+                    double px = center.x + Math.cos(ang) * waveRadius;
+                    double pz = center.z + Math.sin(ang) * waveRadius;
+                    sw.spawnParticles(new DustParticleEffect(PURPLE, 1.8f), px, center.y + 0.1, pz, 1, 0, 0, 0, 0);
+                    sw.spawnParticles(ParticleTypes.WARPED_SPORE, px, center.y + 0.2, pz, 2, 0.1, 0.2, 0.1, 0.05);
+                }
+
+                // ?????????
+                for (int s = 0; s < spikes; s++) {
+                    double angle = s * (Math.PI * 2 / spikes) + (waveIdx * 0.4);
+                    double dist = (s % 2 == 0) ? waveRadius : waveRadius * 0.5;
+                    double sx = center.x + Math.cos(angle) * dist;
+                    double sz = center.z + Math.sin(angle) * dist;
+                    double sy = center.y;
+
+                    // ?????????
+                    for (double h = 0.0; h <= 3.2; h += 0.35) {
+                        sw.spawnParticles(new DustParticleEffect(VOID_BLACK, 2.2f), sx, sy + h, sz, 2, 0.08, 0.05, 0.08, 0.0);
+                        sw.spawnParticles(new DustParticleEffect(PURPLE, 1.8f), sx, sy + h, sz, 1, 0.05, 0.05, 0.05, 0.0);
+                        if (h > 1.5) {
+                            sw.spawnParticles(ParticleTypes.SOUL_FIRE_FLAME, sx, sy + h, sz, 1, 0.05, 0.05, 0.05, 0.02);
+                        }
+                    }
+                    sw.spawnParticles(ParticleTypes.SCULK_SOUL, sx, sy + 3.0, sz, 2, 0.2, 0.2, 0.2, 0.05);
+                }
+
+                // ?????
+                sw.playSound(null, center.x, center.y, center.z,
+                        SoundEvents.ENTITY_EVOKER_FANGS_ATTACK, SoundCategory.HOSTILE, 1.3f, 0.8f + waveIdx * 0.2f);
+                sw.playSound(null, center.x, center.y, center.z,
+                        SoundEvents.ENTITY_WITHER_SHOOT, SoundCategory.HOSTILE, 0.9f, 0.6f + waveIdx * 0.15f);
+
+                // ????????????????
+                float dmg = (float) (ConfigManager.get().behavior.rangedDamage * (1.6 + waveIdx * 0.5));
+                List<Entity> hitFoes = sw.getOtherEntities(gf, Box.of(center, waveRadius * 2.2, 4.0, waveRadius * 2.2),
+                        e -> e instanceof HostileEntity && e.isAlive());
+                for (Entity e : hitFoes) {
+                    LivingEntity foe = (LivingEntity) e;
+                    foe.damage(sw, sw.getDamageSources().mobAttack(gf), dmg);
+                    foe.addVelocity(0, 0.45 + waveIdx * 0.15, 0);
+                    foe.addStatusEffect(new StatusEffectInstance(StatusEffects.WITHER, 60, 1));
+                    foe.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, 50, 2));
+                }
+            });
         }
 
-        AbilityManager.delay(sw, sw.getTime() + 8, () -> {
-            sw.spawnParticles(ParticleTypes.SONIC_BOOM, targetPos.x, targetPos.y + 0.3, targetPos.z, 1, 0, 0, 0, 0);
-            sw.playSound(null, targetPos.x, targetPos.y, targetPos.z,
-                    SoundEvents.ENTITY_WARDEN_SONIC_BOOM, SoundCategory.PLAYERS, 0.8f, 1.5f);
+        // ???????? 12 tick?
+        AbilityManager.delay(sw, now + 12, () -> {
+            if (!gf.isAlive()) return;
+            Vec3d finalPos = (target.isAlive() ? target.getEntityPos() : targetPos).add(0, 1.0, 0);
+            sw.spawnParticles(ParticleTypes.SONIC_BOOM, finalPos.x, finalPos.y, finalPos.z, 2, 0, 0, 0, 0);
+            sw.spawnParticles(ParticleTypes.REVERSE_PORTAL, finalPos.x, finalPos.y, finalPos.z, 60, 2.0, 1.5, 2.0, 0.4);
+            sw.playSound(null, finalPos.x, finalPos.y, finalPos.z,
+                    SoundEvents.ENTITY_WARDEN_SONIC_BOOM, SoundCategory.PLAYERS, 1.1f, 1.3f);
         });
     }
 
     /**
-     * ????????????
+     * ?????????????????
      */
     private static void spawnDodgeAfterimage(ServerWorld sw, Vec3d pos, boolean formTwo) {
         int color = formTwo ? PURPLE : CYAN;
         for (double dy = 0.1; dy <= 1.8; dy += 0.25) {
-            sw.spawnParticles(new DustParticleEffect(color, 1.3f),
-                    pos.x, pos.y + dy, pos.z, 4, 0.2, 0.05, 0.2, 0.0);
+            sw.spawnParticles(new DustParticleEffect(color, 1.5f),
+                    pos.x, pos.y + dy, pos.z, 5, 0.2, 0.05, 0.2, 0.0);
             sw.spawnParticles(ParticleTypes.END_ROD,
                     pos.x, pos.y + dy, pos.z, 1, 0.1, 0.05, 0.1, 0.02);
+            if (formTwo) {
+                sw.spawnParticles(ParticleTypes.WARPED_SPORE,
+                        pos.x, pos.y + dy, pos.z, 2, 0.15, 0.1, 0.15, 0.02);
+            }
         }
     }
 }

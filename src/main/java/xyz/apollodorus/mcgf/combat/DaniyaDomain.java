@@ -176,105 +176,200 @@ public final class DaniyaDomain {
         for (Entity e : mobs) {
             Vec3d toCenter = centerVec.subtract(e.getEntityPos());
             if (toCenter.lengthSquared() > 1.0e-3) {
-                Vec3d pull = toCenter.normalize().multiply(0.45);
-                e.addVelocity(pull.x, 0.12, pull.z);
+                Vec3d pull = toCenter.normalize().multiply(0.68);
+                e.addVelocity(pull.x, 0.22, pull.z);
             }
-            ((LivingEntity) e).damage(world, world.getDamageSources().mobAttack(gf), (float) b.domainPulseDamage);
+            LivingEntity living = (LivingEntity) e;
+            living.damage(world, world.getDamageSources().mobAttack(gf), (float) b.domainPulseDamage);
+            living.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, 50, 2, false, false, true));
+            living.addStatusEffect(new StatusEffectInstance(StatusEffects.WEAKNESS, 50, 1, false, false, true));
         }
-        playAt(SoundEvents.PARTICLE_SOUL_ESCAPE, 0.7f, 0.7f);
-        // 深蓝/紫的牵引脉冲（取代橙色 SOUL_FIRE_FLAME），数量收敛。
-        world.spawnParticles(new DustParticleEffect(PURPLE, 1.4f), centerVec.x, centerVec.y + 0.4, centerVec.z,
-            28, radius * 0.35, 0.35, radius * 0.35, 0.05);
-        world.spawnParticles(ParticleTypes.SCULK_SOUL, centerVec.x, centerVec.y + 0.4, centerVec.z,
-            12, radius * 0.3, 0.3, radius * 0.3, 0.02);
+        playAt(SoundEvents.ENTITY_WARDEN_SONIC_BOOM, 0.65f, 1.45f);
+        playAt(SoundEvents.BLOCK_RESPAWN_ANCHOR_DEPLETE.value(), 0.9f, 0.65f);
+
+        // ?????????????????????
+        int ringParticles = 36;
+        for (int i = 0; i < ringParticles; i++) {
+            double ang = (Math.PI * 2 / ringParticles) * i;
+            double cos = Math.cos(ang);
+            double sin = Math.sin(ang);
+            world.spawnParticles(ParticleTypes.SONIC_BOOM, centerVec.x + cos * 2.2, centerVec.y + 0.3, centerVec.z + sin * 2.2,
+                1, cos * 0.2, 0.0, sin * 0.2, 0.0);
+            world.spawnParticles(ParticleTypes.SOUL_FIRE_FLAME, centerVec.x + cos * (radius * 0.7), centerVec.y + 0.5, centerVec.z + sin * (radius * 0.7),
+                1, cos * 0.05, 0.08, sin * 0.05, 0.02);
+        }
+        world.spawnParticles(new DustParticleEffect(PURPLE, 1.8f), centerVec.x, centerVec.y + 0.6, centerVec.z,
+            36, radius * 0.45, 0.4, radius * 0.45, 0.08);
+        world.spawnParticles(new DustParticleEffect(BLUE, 1.6f), centerVec.x, centerVec.y + 0.6, centerVec.z,
+            32, radius * 0.5, 0.4, radius * 0.5, 0.08);
+        world.spawnParticles(ParticleTypes.SCULK_SOUL, centerVec.x, centerVec.y + 0.6, centerVec.z,
+            18, radius * 0.35, 0.35, radius * 0.35, 0.03);
     }
 
-    // --- visuals ---
+'    // --- visuals ---
 
     private void drawParticles(long elapsed) {
-        // 1) 地面漩涡光纹（取代换方块）：几条绕中心旋转的弧线，深蓝↔紫↔品红流动，贴着地面铺开（参考图2）。
+        // 1) ?????????????? (Ground Resonance Magic Circle)
+        drawResonanceRuneCircle(elapsed);
+
+        // 2) ???????? (Gravitational Rift Swirl)
         drawGroundSwirl(elapsed);
 
-        // 2) 边缘一圈缓转的发光蓝/紫立柱光点（收敛数量，不再满屏橙焰）。
-        double angle = elapsed * 0.12;
-        int points = 8;
-        DustParticleEffect blue = new DustParticleEffect(BLUE, 1.2f);
-        for (int i = 0; i < points; i++) {
-            double a = angle + (Math.PI * 2 / points) * i;
-            double px = centerVec.x + Math.cos(a) * radius;
-            double pz = centerVec.z + Math.sin(a) * radius;
-            world.spawnParticles(blue, px, centerVec.y + 0.3, pz, 1, 0.02, 0.25, 0.02, 0.0);
-            if (i % 2 == 0) world.spawnParticles(ParticleTypes.PORTAL, px, centerVec.y + 0.6, pz, 1, 0.05, 0.4, 0.05, 0.02);
-        }
-        // 3) 三个抬高的旋转菱形 + 下方竖条。
-        drawDiamonds(elapsed);
+        // 3) ????????????????? (Boundary Rift Pillars & Cosmic Monoliths)
+        drawBoundaryMonoliths(elapsed);
+
+        // 4) ????????? (Gravity Rift Pulses)
+        drawGravityFieldRipples(elapsed);
     }
 
     /**
-     * 贴地的漩涡光纹（参考图2）：几条以中心为圆心、随时间旋转的对数螺线弧，沿弧描出深蓝→紫→品红的流动粒子，
-     * 高度紧贴地面（centerVec.y 附近），半透明发光，营造领域地面那种流动的能量漩涡，而不去改动真实方块。
+     * ???????????????????????????????
      */
-    private void drawGroundSwirl(long elapsed) {
-        double base = elapsed * 0.08;
-        int arms = 3;
-        DustParticleEffect blue = new DustParticleEffect(BLUE, 1.5f);
-        DustParticleEffect purple = new DustParticleEffect(PURPLE, 1.5f);
-        DustParticleEffect deep = new DustParticleEffect(DEEP_BLUE, 1.6f);
-        for (int arm = 0; arm < arms; arm++) {
-            double off = base + (Math.PI * 2 / arms) * arm;
-            int steps = 14;
-            for (int s = 0; s < steps; s++) {
-                double rr = (s / (double) steps) * radius;          // 由内向外
-                double a = off + rr * 0.55;                          // 螺旋
-                double px = centerVec.x + Math.cos(a) * rr;
-                double pz = centerVec.z + Math.sin(a) * rr;
-                DustParticleEffect c = (s % 3 == 0) ? deep : ((arm % 2 == 0) ? blue : purple);
-                world.spawnParticles(c, px, centerVec.y + 0.08, pz, 1, 0.04, 0.01, 0.04, 0.0);
-                if (s % 5 == 0) world.spawnParticles(ParticleTypes.END_ROD, px, centerVec.y + 0.12, pz, 1, 0.0, 0.0, 0.0, 0.0);
+    private void drawResonanceRuneCircle(long elapsed) {
+        double innerSpin = elapsed * 0.08;
+        double outerSpin = -elapsed * 0.04;
+        DustParticleEffect cyanDust = new DustParticleEffect(0x5BC8FF, 1.4f);
+        DustParticleEffect purpleDust = new DustParticleEffect(PURPLE, 1.5f);
+        DustParticleEffect deepBlueDust = new DustParticleEffect(DEEP_BLUE, 1.8f);
+
+        // ?????? (Outer Boundary Ring)
+        int outerPoints = 36;
+        for (int i = 0; i < outerPoints; i++) {
+            double a = outerSpin + (Math.PI * 2 / outerPoints) * i;
+            double px = centerVec.x + Math.cos(a) * radius;
+            double pz = centerVec.z + Math.sin(a) * radius;
+            world.spawnParticles(deepBlueDust, px, centerVec.y + 0.12, pz, 1, 0.02, 0.02, 0.02, 0.0);
+            if (i % 6 == 0) {
+                world.spawnParticles(purpleDust, px, centerVec.y + 0.25, pz, 1, 0.03, 0.15, 0.03, 0.0);
+                world.spawnParticles(ParticleTypes.WARPED_SPORE, px, centerVec.y + 0.3, pz, 1, 0.05, 0.2, 0.05, 0.02);
+            }
+        }
+
+        // ??????? (Middle Melody Ring - ?? 0.65)
+        int midPoints = 24;
+        double midR = radius * 0.65;
+        for (int i = 0; i < midPoints; i++) {
+            double a = innerSpin + (Math.PI * 2 / midPoints) * i;
+            double px = centerVec.x + Math.cos(a) * midR;
+            double pz = centerVec.z + Math.sin(a) * midR;
+            world.spawnParticles(purpleDust, px, centerVec.y + 0.1, pz, 1, 0.02, 0.02, 0.02, 0.0);
+            if (i % 4 == 0) {
+                world.spawnParticles(cyanDust, px, centerVec.y + 0.18, pz, 1, 0.02, 0.05, 0.02, 0.0);
+            }
+        }
+
+        // ??????? (Inner Singularity Ring - ?? 0.3)
+        int innerPoints = 16;
+        double innerR = radius * 0.3;
+        for (int i = 0; i < innerPoints; i++) {
+            double a = innerSpin * 1.5 + (Math.PI * 2 / innerPoints) * i;
+            double px = centerVec.x + Math.cos(a) * innerR;
+            double pz = centerVec.z + Math.sin(a) * innerR;
+            world.spawnParticles(cyanDust, px, centerVec.y + 0.15, pz, 1, 0.01, 0.01, 0.01, 0.0);
+            if (elapsed % 10 == 0 && i % 4 == 0) {
+                world.spawnParticles(ParticleTypes.END_ROD, px, centerVec.y + 0.2, pz, 1, 0.0, 0.03, 0.0, 0.02);
             }
         }
     }
 
     /**
-     * 周长上 120° 均布的三个发光蓝色菱形，抬高悬在地面上方（{@link #DIAMOND_HEIGHT}），并在每个菱形正下方画一道
-     * 垂直的发光竖条直落到地面，像立在杆顶的水晶（参考图2）。每个菱形绕竖轴自转，四棱描发光蓝粒子 + END_ROD 高光。
-     * 纯粒子（不放方块）。
+     * ????????????????????????
      */
-    private void drawDiamonds(long elapsed) {
-        double spin = elapsed * 0.14;          // 自转角速度
-        double h = 0.9;                        // 菱形竖直半高
-        double w = 0.6;                         // 菱形横向半宽
-        DustParticleEffect blue = new DustParticleEffect(DIAMOND_COLOR, 1.3f);
-        DustParticleEffect poleColor = new DustParticleEffect(0x6FC2FF, 1.0f);
+    private void drawGroundSwirl(long elapsed) {
+        double base = elapsed * 0.06;
+        int arms = 4;
+        DustParticleEffect purple = new DustParticleEffect(PURPLE, 1.4f);
+        DustParticleEffect deep = new DustParticleEffect(DEEP_BLUE, 1.6f);
+
+        for (int arm = 0; arm < arms; arm++) {
+            double off = base + (Math.PI * 2 / arms) * arm;
+            int steps = 16;
+            for (int s = 0; s < steps; s++) {
+                double frac = s / (double) steps;
+                double rr = frac * radius;
+                double a = off + (1.0 - frac) * 1.2;
+                double px = centerVec.x + Math.cos(a) * rr;
+                double pz = centerVec.z + Math.sin(a) * rr;
+
+                world.spawnParticles((s % 2 == 0 ? deep : purple), px, centerVec.y + 0.08, pz, 1, 0.02, 0.01, 0.02, 0.0);
+                if (s == steps - 1 && elapsed % 4 == 0) {
+                    world.spawnParticles(ParticleTypes.REVERSE_PORTAL, px, centerVec.y + 0.1, pz, 1, 0.05, 0.1, 0.05, 0.05);
+                }
+            }
+        }
+    }
+
+    /**
+     * ???????????????????????? (Boundary Monoliths)
+     */
+    private void drawBoundaryMonoliths(long elapsed) {
+        double spin = elapsed * 0.08;
+        DustParticleEffect beamColor = new DustParticleEffect(0x6FC2FF, 1.2f);
+        DustParticleEffect purpleCore = new DustParticleEffect(PURPLE, 1.8f);
+
         for (int k = 0; k < DIAMOND_CORNERS; k++) {
             double baseAng = (Math.PI * 2 / DIAMOND_CORNERS) * k;
             double cx = centerVec.x + Math.cos(baseAng) * radius;
             double cz = centerVec.z + Math.sin(baseAng) * radius;
             double cy = centerVec.y + DIAMOND_HEIGHT;
-            // 下方垂直竖条：从地面 centerVec.y 直上到菱形底部。
-            double poleTop = cy - h;
-            int seg = Math.max(3, (int) Math.round((poleTop - centerVec.y) * 2));
-            for (int i = 0; i <= seg; i++) {
+
+            // ???????????? (Resonance Rift Pillar)
+            double poleTop = cy + 1.2;
+            int seg = Math.max(4, (int) Math.round((poleTop - centerVec.y) * 1.8));
+            for (int i = 0; i <= seg; i += 2) {
                 double py = centerVec.y + (poleTop - centerVec.y) * (i / (double) seg);
-                world.spawnParticles(poleColor, cx, py, cz, 1, 0.01, 0.0, 0.01, 0.0);
+                world.spawnParticles(beamColor, cx, py, cz, 1, 0.03, 0.0, 0.03, 0.0);
             }
-            // 抬高的旋转菱形。
+
+            // ?????? (Floating Resonance Octahedron)
+            double h = 1.0;
+            double w = 0.65;
             Vec3d up = new Vec3d(cx, cy + h, cz);
             Vec3d down = new Vec3d(cx, cy - h, cz);
             Vec3d s1 = new Vec3d(cx + Math.cos(spin) * w, cy, cz + Math.sin(spin) * w);
             Vec3d s2 = new Vec3d(cx - Math.cos(spin) * w, cy, cz - Math.sin(spin) * w);
-            edge(blue, up, s1);
-            edge(blue, s1, down);
-            edge(blue, down, s2);
-            edge(blue, s2, up);
-            world.spawnParticles(ParticleTypes.END_ROD, cx, cy, cz, 1, 0.05, 0.05, 0.05, 0.0);
-            world.spawnParticles(ParticleTypes.GLOW, cx, cy, cz, 1, 0.08, 0.15, 0.08, 0.0);
+            Vec3d s3 = new Vec3d(cx - Math.sin(spin) * w, cy, cz + Math.cos(spin) * w);
+            Vec3d s4 = new Vec3d(cx + Math.sin(spin) * w, cy, cz - Math.cos(spin) * w);
+
+            edge(purpleCore, up, s1);
+            edge(purpleCore, up, s2);
+            edge(purpleCore, up, s3);
+            edge(purpleCore, up, s4);
+            edge(purpleCore, s1, down);
+            edge(purpleCore, s2, down);
+            edge(purpleCore, s3, down);
+            edge(purpleCore, s4, down);
+
+            if (elapsed % 3 == 0) {
+                world.spawnParticles(ParticleTypes.END_ROD, cx, cy, cz, 1, 0.08, 0.08, 0.08, 0.02);
+                world.spawnParticles(ParticleTypes.GLOW, cx, cy, cz, 2, 0.12, 0.2, 0.12, 0.0);
+                world.spawnParticles(ParticleTypes.SOUL_FIRE_FLAME, cx, cy, cz, 1, 0.05, 0.05, 0.05, 0.01);
+            }
+        }
+    }
+
+    /**
+     * ????????? (Gravity Field Ripples)
+     */
+    private void drawGravityFieldRipples(long elapsed) {
+        if (elapsed % 8 == 0) {
+            // ?????????????
+            double pulseProgress = (elapsed % 40) / 40.0;
+            double ringR = pulseProgress * radius;
+            int pts = 24;
+            DustParticleEffect waveDust = new DustParticleEffect(0x5BC8FF, 1.2f);
+            for (int i = 0; i < pts; i++) {
+                double a = i * (Math.PI * 2 / pts);
+                double px = centerVec.x + Math.cos(a) * ringR;
+                double pz = centerVec.z + Math.sin(a) * ringR;
+                world.spawnParticles(waveDust, px, centerVec.y + 0.18, pz, 1, 0.01, 0.01, 0.01, 0.0);
+            }
         }
     }
 
     /** Trace a glowing line between two points (one segment of a diamond edge). */
     private void edge(DustParticleEffect dust, Vec3d a, Vec3d b) {
-        int seg = 6;
+        int seg = 5;
         for (int i = 0; i <= seg; i++) {
             Vec3d p = a.lerp(b, i / (double) seg);
             world.spawnParticles(dust, p.x, p.y, p.z, 1, 0.0, 0.0, 0.0, 0.0);
