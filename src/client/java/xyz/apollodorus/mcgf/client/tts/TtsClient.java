@@ -42,6 +42,7 @@ public final class TtsClient {
     public static void speak(String text) {
         GirlfriendConfig.Tts cfg = ConfigManager.get().tts;
         if (!cfg.enabled || text == null || text.isBlank()) return;
+        if (cfg.url == null || (!cfg.url.startsWith("http://") && !cfg.url.startsWith("https://"))) return;
         EXEC.submit(() -> {
             try {
                 String url = buildUrl(cfg, text);

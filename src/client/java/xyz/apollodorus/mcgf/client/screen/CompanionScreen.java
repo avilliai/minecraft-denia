@@ -49,10 +49,10 @@ public class CompanionScreen extends HandledScreen<CompanionScreenHandler> {
         int bx = this.x + (this.backgroundWidth - (bw * 2 + gap)) / 2;
         int by = this.y + 206;
         addDrawableChild(ButtonWidget.builder(Text.literal("接口配置"),
-                b -> { if (this.client != null) this.client.setScreen(new CompanionConfigScreen()); })
+                b -> { if (this.client != null) { if (this.client.player != null) this.client.player.closeHandledScreen(); this.client.setScreen(new CompanionConfigScreen()); } })
             .dimensions(bx, by, bw, bh).build());
         addDrawableChild(ButtonWidget.builder(Text.literal("任务列表"),
-                b -> { if (this.client != null) this.client.setScreen(new CompanionTaskScreen(this.handler.data())); })
+                b -> { if (this.client != null) { if (this.client.player != null) this.client.player.closeHandledScreen(); this.client.setScreen(new CompanionTaskScreen(this.handler.data())); } })
             .dimensions(bx + bw + gap, by, bw, bh).build());
     }
 

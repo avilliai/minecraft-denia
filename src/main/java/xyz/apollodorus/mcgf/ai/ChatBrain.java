@@ -61,15 +61,26 @@ public final class ChatBrain {
      */
     private final Map<UUID, Deque<String>> recentLines = new ConcurrentHashMap<>();
     private static final int RECENT_MAX = 8;
-    private final ExecutorService executor;
+    private ExecutorService executor;
 
     public ChatBrain() {
-        AtomicInteger n = new AtomicInteger();
-        this.executor = Executors.newFixedThreadPool(2, r -> {
-            Thread t = new Thread(r, "mcgf-brain-" + n.incrementAndGet());
-            t.setDaemon(true);
-            return t;
-        });
+        initExecutor();
+    }
+
+    private synchronized void initExecutor() {
+        if (this.executor == null || this.executor.isShutdown() || this.executor.isTerminated()) {
+            AtomicInteger n = new AtomicInteger();
+            this.executor = Executors.newFixedThreadPool(2, r -> {
+                Thread t = new Thread(r, "mcgf-brain-" + n.incrementAndGet());
+                t.setDaemon(true);
+                return t;
+            });
+        }
+    }
+
+    private synchronized ExecutorService getExecutor() {
+        initExecutor();
+        return this.executor;
     }
 
     /** Called on the server thread when a nearby owner sends normal chat. */
@@ -92,7 +103,7 @@ public final class ChatBrain {
         }
         LOGGER.info("[mcgf] <- {}: {}", player.getName().getString(), message);
         if (startWorker) {
-            executor.submit(() -> runInbox(server, gf, player, id, inbox));
+            getExecutor().submit(() -> runInbox(server, gf, player, id, inbox));
         }
     }
 
@@ -359,7 +370,7 @@ public final class ChatBrain {
         final UUID ownerId = sp.getUuid();
         GirlfriendConfig cfg = ConfigManager.get();
         final boolean formTwo = gf.isFormTwo();
-        executor.submit(() -> {
+        getExecutor().submit(() -> {
             try {
                 String system = cfg.fillName(formTwo ? cfg.llm.ephemeralSystemForm2 : cfg.llm.ephemeralSystem)
                     + "\n\n[环境]\n" + context;
