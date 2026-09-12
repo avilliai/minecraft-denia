@@ -12,7 +12,6 @@ import net.minecraft.sound.SoundEvents;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
 import org.joml.Vector3f;
-import xyz.apollodorus.mcgf.ai.SpeechBus;
 import xyz.apollodorus.mcgf.config.ConfigManager;
 import xyz.apollodorus.mcgf.entity.GirlfriendEntity;
 import xyz.apollodorus.mcgf.combat.AbilityManager;
@@ -38,16 +37,16 @@ public class DaniyaCombatEngine {
 
     /**
      * 极限闪避判定：
-     * 二形态获得更高闪避机动率（二形态 55%，一形态 35%）
+     * 二形态获得更高闪避机动率（二形态 75%，一形态 35%）
      */
     public static boolean tryExtremeDodge(GirlfriendEntity gf, LivingEntity attacker) {
         if (!(gf.getEntityWorld() instanceof ServerWorld sw)) return false;
         long now = sw.getTime();
-        // 极限闪避基础内置 CD：一形态 5 秒 (100 ticks)，二形态更为灵动 3.5 秒 (70 ticks)
-        long cd = gf.isFormTwo() ? 70 : 100;
+        // 极限闪避基础内置 CD：一形态 5 秒 (100 ticks)，二形态更为灵动 2.5 秒 (50 ticks)
+        long cd = gf.isFormTwo() ? 50 : 100;
         if (now - lastDodgeTick < cd) return false;
 
-        float chance = gf.isFormTwo() ? 0.55f : 0.35f;
+        float chance = gf.isFormTwo() ? 0.75f : 0.35f;
         if (gf.getRandom().nextFloat() > chance) return false;
 
         lastDodgeTick = now;
@@ -78,21 +77,6 @@ public class DaniyaCombatEngine {
         gf.addStatusEffect(new StatusEffectInstance(StatusEffects.SPEED, 40, 2, false, false));
         gf.addStatusEffect(new StatusEffectInstance(StatusEffects.RESISTANCE, 25, 4, false, false));
 
-        if (gf.getRandom().nextFloat() < 0.65f) {
-            String[] quotes = gf.isFormTwo() ? new String[]{
-                    "慢吞吞的，在看哪里呀？",
-                    "虚质引力…可不是这么好碰的哦。",
-                    "抓不到我吧~",
-                    "动作太迟钝了呢。"
-            } : new String[]{
-                    "呼啊…好险好险，差点被打中了~",
-                    "动作太明显啦！",
-                    "慢悠悠的，我可闪开咯~",
-                    "吓我一跳，想偷袭呀？"
-            };
-            SpeechBus.speak(gf, quotes[gf.getRandom().nextInt(quotes.length)]);
-        }
-
         // 0.25 秒后触发极限反击冲能
         AbilityManager.delay(sw, now + 5, () -> {
             if (!gf.isAlive()) return;
@@ -107,18 +91,21 @@ public class DaniyaCombatEngine {
 
     /**
      * 二形态专属：主动空中折跃靠近敌对生物（复用闪避位移并附带音爆与引力）
+     * 目标：通过瞬步折跃，直接拉近距离让目标进入达妮娅舒适的远程轰炸射程（3.5 ~ 6 格）
      */
     public static boolean tryFormTwoApproachDash(GirlfriendEntity gf, LivingEntity target) {
         if (!gf.isFormTwo() || !(gf.getEntityWorld() instanceof ServerWorld sw) || target == null || !target.isAlive()) {
             return false;
         }
         long now = sw.getTime();
-        // 内置 CD 6 秒 (120 ticks)
-        if (now - lastFormTwoDashTick < 120) return false;
+        // 内置 CD 3.5 秒 (70 ticks)
+        if (now - lastFormTwoDashTick < 70) return false;
 
-        double distSq = gf.squaredDistanceTo(target);
-        // 当距离在 7 到 24 格之间时，主动折跃切入到离目标 3.5 格处施加威压
-        if (distSq < 49.0 || distSq > 576.0) return false;
+        double dist = gf.distanceTo(target);
+        boolean canSee = gf.canSee(target);
+        // 当距离过远 (> 8格) 或 视线受阻且距离 > 4格 时，主动折跃切入到离目标 3.5 ~ 4.5 格处施加威压
+        if (dist <= 7.0 && canSee) return false;
+        if (dist > 32.0) return false; // 超出追击视野则不无脑瞬移
 
         lastFormTwoDashTick = now;
         Vec3d gfPos = gf.getEntityPos();
@@ -128,8 +115,8 @@ public class DaniyaCombatEngine {
         // 原地音波残影
         spawnDodgeAfterimage(sw, gfPos, true);
 
-        // 切入至目标斜上方 3.5 格，保持优雅空中悬浮
-        Vec3d dest = targetPos.subtract(dir.multiply(3.5)).add(0, 2.2, 0);
+        // 切入至目标斜上方 3.5 格处，确保怪物直接处于达妮娅射程并拥有绝佳俯视角
+        Vec3d dest = targetPos.subtract(dir.multiply(3.8)).add(0, 2.2, 0);
         gf.requestTeleport(dest.x, dest.y, dest.z);
 
         // 折跃破空与虚质引力音效
@@ -137,21 +124,11 @@ public class DaniyaCombatEngine {
         sw.playSound(null, dest.x, dest.y, dest.z, SoundEvents.ITEM_CHORUS_FRUIT_TELEPORT, SoundCategory.PLAYERS, 1.0f, 1.3f);
 
         // 沿途音感仪流光轨迹
-        for (double d = 0; d < gfPos.distanceTo(dest); d += 0.8) {
-            Vec3d p = gfPos.add(dest.subtract(gfPos).multiply(d / gfPos.distanceTo(dest)));
+        double totalDist = gfPos.distanceTo(dest);
+        for (double d = 0; d < totalDist; d += 0.8) {
+            Vec3d p = gfPos.add(dest.subtract(gfPos).multiply(d / totalDist));
             sw.spawnParticles(new DustParticleEffect(PURPLE, 1.4f), p.x, p.y, p.z, 2, 0.05, 0.05, 0.05, 0.0);
             sw.spawnParticles(ParticleTypes.END_ROD, p.x, p.y, p.z, 1, 0.02, 0.02, 0.02, 0.01);
-        }
-
-        // 短暂轻语
-        if (gf.getRandom().nextFloat() < 0.5f) {
-            String[] approachQuotes = {
-                    "既然你不过来，那就由我来找你咯~",
-                    "别想逃出我的音律范围哦。",
-                    "抓到你了呢~",
-                    "就站在那里别动。"
-            };
-            SpeechBus.speak(gf, approachQuotes[gf.getRandom().nextInt(approachQuotes.length)]);
         }
 
         return true;
@@ -206,12 +183,6 @@ public class DaniyaCombatEngine {
      * 一形态共鸣技能：泡沫共振波
      */
     private static void castFormOneSkill(ServerWorld sw, GirlfriendEntity gf, LivingEntity target) {
-        String[] skillQuotes = {
-                "这一下……可要接好了哦！",
-                "音波共鸣，散！",
-                "哼，尝尝这个~"
-        };
-        SpeechBus.speak(gf, skillQuotes[gf.getRandom().nextInt(skillQuotes.length)]);
         sw.playSound(null, gf.getX(), gf.getY(), gf.getZ(),
                 SoundEvents.BLOCK_AMETHYST_BLOCK_CHIME, SoundCategory.PLAYERS, 1.5f, 1.2f);
         sw.playSound(null, gf.getX(), gf.getY(), gf.getZ(),
@@ -222,27 +193,33 @@ public class DaniyaCombatEngine {
 
         for (int step = 1; step <= 3; step++) {
             final int distance = step * 3;
-            AbilityManager.delay(sw, sw.getTime() + (step * 3), () -> {
+            AbilityManager.delay(sw, sw.getTime() + step * 3, () -> {
+                if (!gf.isAlive()) return;
                 Vec3d ringPos = center.add(look.multiply(distance));
-                int points = 24;
-                for (int i = 0; i < points; i++) {
-                    double ang = i * (Math.PI * 2 / points);
-                    double rx = Math.cos(ang) * (distance * 0.45);
-                    double rz = Math.sin(ang) * (distance * 0.45);
-                    sw.spawnParticles(new DustParticleEffect(PINK, 1.6f),
-                            ringPos.x + rx, ringPos.y, ringPos.z + rz, 1, 0, 0.05, 0, 0.0);
-                    sw.spawnParticles(new DustParticleEffect(CYAN, 1.4f),
-                            ringPos.x + rx, ringPos.y + 0.3, ringPos.z + rz, 1, 0, 0.05, 0, 0.0);
-                }
-                sw.spawnParticles(ParticleTypes.BUBBLE_POP, ringPos.x, ringPos.y, ringPos.z, 20, 0.8, 0.5, 0.8, 0.1);
 
+                // 环形共鸣波
+                for (int i = 0; i < 20; i++) {
+                    double angle = i * (Math.PI * 2 / 20);
+                    double rx = Math.cos(angle) * (1.2 + distance * 0.2);
+                    double rz = Math.sin(angle) * (1.2 + distance * 0.2);
+                    sw.spawnParticles(new DustParticleEffect(CYAN, 1.6f), ringPos.x + rx, ringPos.y, ringPos.z + rz, 1, 0, 0, 0, 0);
+                    sw.spawnParticles(new DustParticleEffect(PINK, 1.3f), ringPos.x + rx, ringPos.y + 0.1, ringPos.z + rz, 1, 0, 0, 0, 0);
+                }
+                sw.playSound(null, ringPos.x, ringPos.y, ringPos.z,
+                        SoundEvents.BLOCK_AMETHYST_CLUSTER_STEP, SoundCategory.PLAYERS, 1.0f, 1.5f);
+
+                // 范围波及敌人
                 List<LivingEntity> enemies = sw.getEntitiesByClass(LivingEntity.class,
                         new Box(ringPos.x - 2.5, ringPos.y - 1.5, ringPos.z - 2.5,
-                                ringPos.x + 2.5, ringPos.y + 2.5, ringPos.z + 2.5),
+                                ringPos.x + 2.5, ringPos.y + 2.0, ringPos.z + 2.5),
                         e -> e != gf && e.isAlive() && !e.isTeammate(gf));
-                for (LivingEntity enemy : enemies) {
-                    enemy.damage(sw, gf.getDamageSources().magic(), (float) (ConfigManager.get().behavior.rangedDamage * 1.5));
-                    enemy.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, 60, 1));
+
+                for (LivingEntity e : enemies) {
+                    e.damage(sw, gf.getDamageSources().magic(), (float) (ConfigManager.get().behavior.rangedDamage * 1.5));
+                    Vec3d push = e.getEntityPos().subtract(ringPos).normalize().multiply(0.8).add(0, 0.2, 0);
+                    e.setVelocity(push);
+                    e.velocityDirty = true;
+                    e.addStatusEffect(new StatusEffectInstance(StatusEffects.SLOWNESS, 60, 1));
                 }
             });
         }
@@ -253,12 +230,6 @@ public class DaniyaCombatEngine {
      * 地面大范围暗黑引力荆棘突刺 + 声波脉冲爆发 + 强制挑空
      */
     private static void castFormTwoSkill(ServerWorld sw, GirlfriendEntity gf, LivingEntity target) {
-        String[] skillQuotes = {
-                "暗棘碎涌……沉沦于此吧。",
-                "在此刻，聆听引力的终结！",
-                "虚质崩落，化为碎屑吧。"
-        };
-        SpeechBus.speak(gf, skillQuotes[gf.getRandom().nextInt(skillQuotes.length)]);
         sw.playSound(null, gf.getX(), gf.getY(), gf.getZ(),
                 SoundEvents.ENTITY_WARDEN_SONIC_CHARGE, SoundCategory.PLAYERS, 1.4f, 0.9f);
         sw.playSound(null, gf.getX(), gf.getY(), gf.getZ(),

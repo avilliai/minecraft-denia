@@ -125,7 +125,13 @@ public class DaniyaAttackGoal extends Goal {
             double moveSpeed = b.moveSpeed * 1.35;
             double band = 1.0;
             boolean mustApproach = dist > preferred + band || (!canSee && dist > preferred);
-            if (mustApproach) {
+
+            // ???????????????????????????????
+            if (mustApproach && DaniyaCombatEngine.tryFormTwoApproachDash(gf, target)) {
+                dist = gf.distanceTo(target);
+                canSee = gf.canSee(target);
+                idleAttackTicks = 0;
+            } else if (mustApproach) {
                 if (--repathCd <= 0) { repathCd = 8; gf.getNavigation().startMovingTo(target, moveSpeed); }
             } else if (dist < preferred - band - 0.5) {
                 if (--repathCd <= 0) { repathCd = 10; backAwayFrom(target, moveSpeed, preferred); }
@@ -136,10 +142,16 @@ public class DaniyaAttackGoal extends Goal {
                     strafeAround(target, moveSpeed * 0.8, true);
                 }
             }
-            // 形态二 watchdog：长时间没命中就直接压上去。
-            if (++idleAttackTicks > 50) {
-                gf.getNavigation().startMovingTo(target, moveSpeed);
-                if (idleAttackTicks > 70) idleAttackTicks = 0;
+            // ??? watchdog?????????????????????????????
+            if (++idleAttackTicks > 35) {
+                if (DaniyaCombatEngine.tryFormTwoApproachDash(gf, target)) {
+                    dist = gf.distanceTo(target);
+                    canSee = gf.canSee(target);
+                    idleAttackTicks = 0;
+                } else {
+                    gf.getNavigation().startMovingTo(target, moveSpeed);
+                }
+                if (idleAttackTicks > 55) idleAttackTicks = 0;
             }
         }
 
@@ -148,13 +160,21 @@ public class DaniyaAttackGoal extends Goal {
         if (rangedCd > 0) { rangedCd--; return; }
         if (canAttack && dist <= maxRange && canSee) {
             rangedCd = Math.max(10, b.rangedIntervalTicks);
-            // ?????????????????????? / ?????
+            // ?????????????????? / ?????
             if (gf.getRandom().nextFloat() < 0.35f && DaniyaCombatEngine.tryCastResonanceSkill(sw, gf, target)) {
                 gf.gainEnergy((int)(b.energyPerHit * 1.5));
                 idleAttackTicks = 0;
                 return;
             }
             gf.swingHand(Hand.MAIN_HAND);
+            if (!formTwo) {
+                // ?????????????????
+                ItemStack held = gf.getEquippedStack(EquipmentSlot.MAINHAND);
+                String p = held.isEmpty() ? "" : net.minecraft.registry.Registries.ITEM.getId(held.getItem()).getPath();
+                if (held.isEmpty() || (!ItemAppraiser.isWeaponLike(held, p) && !ItemAppraiser.isFirearmLike(p) && !held.isOf(xyz.apollodorus.mcgf.item.ModItems.BUBBLE_WAND))) {
+                    equipForForm(false);
+                }
+            }
             castCombo(sw, formTwo);
             comboStep = (comboStep + 1) % 4;
             gf.gainEnergy(b.energyPerHit);
@@ -318,24 +338,40 @@ public class DaniyaAttackGoal extends Goal {
             return;
         }
 
-        // 评估背包中是否有枪械或更高评分的模组武器
         ItemStack current = gf.getEquippedStack(EquipmentSlot.MAINHAND);
+        String currentPath = current.isEmpty() ? "" : net.minecraft.registry.Registries.ITEM.getId(current.getItem()).getPath();
+        boolean currentIsLegitWeapon = !current.isEmpty() &&
+                (ItemAppraiser.isWeaponLike(current, currentPath) || ItemAppraiser.isFirearmLike(currentPath) || current.isOf(xyz.apollodorus.mcgf.item.ModItems.BUBBLE_WAND));
+
+        // ?????????????????????
+        if (!current.isEmpty() && !currentIsLegitWeapon) {
+            ItemStack nonWeapon = current.copy();
+            gf.equipStack(EquipmentSlot.MAINHAND, ItemStack.EMPTY);
+            gf.getInventory().addStack(nonWeapon);
+            current = ItemStack.EMPTY;
+            currentPath = "";
+        }
+
+        // ????????????????
         int currentScore = current.isEmpty() ? -1 : ItemAppraiser.evaluate(current, gf).score();
-        
         int bestSlot = -1;
         int bestScore = currentScore;
-        boolean currentIsGun = !current.isEmpty() && ItemAppraiser.isFirearmLike(net.minecraft.registry.Registries.ITEM.getId(current.getItem()).getPath());
+        boolean currentIsGun = !current.isEmpty() && ItemAppraiser.isFirearmLike(currentPath);
 
         for (int i = 0; i < gf.getInventory().size(); i++) {
             ItemStack stack = gf.getInventory().getStack(i);
             if (stack.isEmpty()) continue;
-            var eval = ItemAppraiser.evaluate(stack, gf);
-            boolean isGun = ItemAppraiser.isFirearmLike(net.minecraft.registry.Registries.ITEM.getId(stack.getItem()).getPath());
+            String path = net.minecraft.registry.Registries.ITEM.getId(stack.getItem()).getPath();
+            boolean isGun = ItemAppraiser.isFirearmLike(path);
+            boolean isWeapon = ItemAppraiser.isWeaponLike(stack, path);
 
-            // 枪械武器优先赋能，或者评分显著高于当前手持武器 (+15 分)
+            if (!isGun && !isWeapon) continue;
+
+            var eval = ItemAppraiser.evaluate(stack, gf);
+            // ??????????????????? (+15 ?)
             if (isGun && !currentIsGun) {
                 bestSlot = i;
-                bestScore = eval.score() + 50; // 枪械偏好加权
+                bestScore = eval.score() + 50; // ??????
                 break;
             } else if (eval.score() > bestScore + 15) {
                 bestScore = eval.score();
@@ -352,8 +388,8 @@ public class DaniyaAttackGoal extends Goal {
             return;
         }
 
-        // 若当前未持有优秀模组武器，确保装备泡泡法杖专武
-        if (current.isEmpty()) {
+        // ?????????????????????
+        if (gf.getEquippedStack(EquipmentSlot.MAINHAND).isEmpty()) {
             gf.equipSignatureWeapon();
         }
     }

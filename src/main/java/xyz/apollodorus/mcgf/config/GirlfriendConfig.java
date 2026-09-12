@@ -262,7 +262,7 @@ public class GirlfriendConfig {
         /** A nearby hostile whose max health exceeds this counts as a "strong" enemy worth going form-2 for. */
         public double domainStrongHostileHealth = 24.0;
         /** Domain radius (blocks) around 达妮娅: ground swap, sky decor, pull + buff area. */
-        public int domainRadius = 10;
+        public int domainRadius = 15; // ??????50% (?10? -> 15?)
         /** Domain duration in seconds. */
         public int domainSeconds = 30;
         /** Damage bonus inside the domain for 达妮娅 and the owner (0.25 = +25%, melee stat). */
