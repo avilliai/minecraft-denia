@@ -1,4 +1,4 @@
-﻿{
+{
   "required": true,
   "package": "xyz.apollodorus.mcgf.client.mixin",
   "compatibilityLevel": "JAVA_21",
